@@ -94,6 +94,7 @@ class UnrealConnection:
     # Commands that need longer timeouts
     LARGE_OPERATION_COMMANDS = {
         "get_available_materials",
+        "search_assets",
         "create_town",
         "create_castle_fortress", 
         "construct_mansion",
@@ -2783,6 +2784,118 @@ def rename_function(
     except Exception as e:
         logger.error(f"rename_function error: {e}")
         return {"success": False, "message": str(e)}
+
+
+# ============================================================================
+# Generalized Asset Discovery
+# ============================================================================
+
+# Preset animation classes used by find_animation_assets. Covers the common
+# GASP / third-person animation kit.
+_ANIMATION_ASSET_CLASSES = [
+    "AnimSequence",
+    "AnimMontage",
+    "AnimComposite",
+    "BlendSpace",
+    "BlendSpace1D",
+    "AimOffsetBlendSpace",
+    "AimOffsetBlendSpace1D",
+    "AnimBlueprint",
+    "Skeleton",
+    "SkeletalMesh",
+    "PhysicsAsset",
+]
+
+
+@mcp.tool()
+def search_assets(
+    class_names: List[str],
+    paths: Optional[List[str]] = None,
+    recursive: bool = True,
+    recursive_classes: bool = True,
+    include_engine: bool = False,
+    max_results: int = 1000,
+) -> Dict[str, Any]:
+    """
+    Search the project's Asset Registry for assets of given classes under given paths.
+
+    Uses Unreal's FARFilter / FTopLevelAssetPath under the hood — the same machinery
+    the editor's Content Browser uses — so results match what you see in-editor.
+
+    Args:
+        class_names: Asset class short names (e.g. "AnimSequence", "StaticMesh",
+            "Material", "Blueprint", "Texture2D", "SoundBase") or fully-qualified
+            paths like "/Script/Engine.AnimSequence". Short names for common engine
+            classes are auto-resolved.
+        paths: Content paths to search. Defaults to ["/Game/"].
+        recursive: If True (default), search sub-folders.
+        recursive_classes: If True (default), match subclasses too.
+        include_engine: If True, also search "/Engine/". Defaults to False.
+        max_results: Hard cap on results returned. Defaults to 1000, max 5000.
+
+    Returns:
+        Dict with:
+            - assets: list of {name, path, package, class}
+            - count: number returned
+            - total_found: total matched (before max_results cap)
+            - truncated: bool
+            - searched_paths, resolved_class_paths, unresolved_class_names
+
+    Example:
+        >>> search_assets(class_names=["AnimSequence"], paths=["/Game/Characters/"])
+        >>> search_assets(class_names=["StaticMesh"], paths=["/Game/Meshes/"], max_results=50)
+    """
+    unreal = get_unreal_connection()
+    if not unreal:
+        return {"success": False, "message": "Failed to connect to Unreal Engine"}
+
+    try:
+        params: Dict[str, Any] = {
+            "class_names": class_names,
+            "recursive": recursive,
+            "recursive_classes": recursive_classes,
+            "include_engine": include_engine,
+            "max_results": max_results,
+        }
+        if paths is not None:
+            params["paths"] = paths
+        response = unreal.send_command("search_assets", params)
+        return response or {"success": False, "message": "No response from Unreal"}
+    except Exception as e:
+        logger.error(f"search_assets error: {e}")
+        return {"success": False, "message": str(e)}
+
+
+@mcp.tool()
+def find_animation_assets(
+    paths: Optional[List[str]] = None,
+    include_engine: bool = False,
+    max_results: int = 1000,
+) -> Dict[str, Any]:
+    """
+    Find animation-related assets in the project: AnimSequence, AnimMontage,
+    AnimComposite, BlendSpace / BlendSpace1D, AimOffsetBlendSpace(1D),
+    AnimBlueprint, Skeleton, SkeletalMesh, PhysicsAsset.
+
+    Thin preset over `search_assets` — useful for discovering animation content
+    (e.g. GASP kits, retarget sources) without memorising all the class names.
+
+    Args:
+        paths: Content paths to search. Defaults to ["/Game/"].
+        include_engine: If True, also search "/Engine/".
+        max_results: Hard cap on results. Defaults to 1000.
+
+    Returns:
+        Same shape as `search_assets`.
+    """
+    return search_assets(
+        class_names=_ANIMATION_ASSET_CLASSES,
+        paths=paths,
+        recursive=True,
+        recursive_classes=True,
+        include_engine=include_engine,
+        max_results=max_results,
+    )
 
 
 # Run the server

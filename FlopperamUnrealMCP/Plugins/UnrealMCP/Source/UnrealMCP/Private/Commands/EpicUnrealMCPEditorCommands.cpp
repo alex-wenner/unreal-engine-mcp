@@ -21,6 +21,10 @@
 #include "Engine/Blueprint.h"
 #include "Engine/BlueprintGeneratedClass.h"
 #include "EditorAssetLibrary.h"
+#include "AssetRegistry/AssetRegistryModule.h"
+#include "AssetRegistry/IAssetRegistry.h"
+#include "AssetRegistry/ARFilter.h"
+#include "UObject/TopLevelAssetPath.h"
 #include "Commands/EpicUnrealMCPBlueprintCommands.h"
 
 FEpicUnrealMCPEditorCommands::FEpicUnrealMCPEditorCommands()
@@ -54,6 +58,11 @@ TSharedPtr<FJsonObject> FEpicUnrealMCPEditorCommands::HandleCommand(const FStrin
     else if (CommandType == TEXT("spawn_blueprint_actor"))
     {
         return HandleSpawnBlueprintActor(Params);
+    }
+    // Generalized asset search
+    else if (CommandType == TEXT("search_assets"))
+    {
+        return HandleSearchAssets(Params);
     }
     
     return FEpicUnrealMCPCommonUtils::CreateErrorResponse(FString::Printf(TEXT("Unknown editor command: %s"), *CommandType));
@@ -305,4 +314,254 @@ TSharedPtr<FJsonObject> FEpicUnrealMCPEditorCommands::HandleSpawnBlueprintActor(
     // This function will now correctly call the implementation in BlueprintCommands
     FEpicUnrealMCPBlueprintCommands BlueprintCommands;
     return BlueprintCommands.HandleCommand(TEXT("spawn_blueprint_actor"), Params);
+}
+
+// -----------------------------------------------------------------------------
+// HandleSearchAssets
+//
+// Generalized asset search built on FARFilter / FTopLevelAssetPath — same
+// machinery HandleGetAvailableMaterials already uses for materials, but usable
+// for any asset class (animations, skeletons, meshes, textures, blueprints...).
+//
+// Params:
+//   class_names (array of strings, required)
+//       Asset class short names (e.g. "AnimSequence", "AnimMontage",
+//       "BlendSpace", "AnimBlueprint", "Skeleton", "SkeletalMesh",
+//       "StaticMesh", "Blueprint", "Material", "Texture2D", "SoundBase").
+//       You may also pass fully-qualified paths like "/Script/Engine.AnimSequence"
+//       and those are forwarded unchanged.
+//   paths (array of strings, optional)   — default ["/Game/"]
+//   recursive (bool, optional)           — default true  (recursive folder search)
+//   recursive_classes (bool, optional)   — default true  (include subclasses)
+//   include_engine (bool, optional)      — default false (also search /Engine/)
+//   max_results (int, optional)          — default 1000, capped at 5000
+// -----------------------------------------------------------------------------
+namespace
+{
+    // Short-name -> FTopLevelAssetPath for classes that ship with the engine.
+    // Passthrough for any "/Script/..." path the caller already resolved.
+    static FTopLevelAssetPath ResolveAssetClassPath(const FString& InName)
+    {
+        const FString Name = InName.TrimStartAndEnd();
+
+        // Pre-qualified path: "/Script/Module.ClassName"
+        if (Name.StartsWith(TEXT("/Script/")) && Name.Contains(TEXT(".")))
+        {
+            return FTopLevelAssetPath(Name);
+        }
+
+        struct FKnownClass { const TCHAR* ShortName; const TCHAR* PackageName; const TCHAR* ClassName; };
+        static const FKnownClass Known[] = {
+            // Animation
+            { TEXT("AnimSequence"),         TEXT("/Script/Engine"),    TEXT("AnimSequence") },
+            { TEXT("AnimMontage"),          TEXT("/Script/Engine"),    TEXT("AnimMontage") },
+            { TEXT("BlendSpace"),           TEXT("/Script/Engine"),    TEXT("BlendSpace") },
+            { TEXT("BlendSpace1D"),         TEXT("/Script/Engine"),    TEXT("BlendSpace1D") },
+            { TEXT("AimOffsetBlendSpace"),  TEXT("/Script/Engine"),    TEXT("AimOffsetBlendSpace") },
+            { TEXT("AimOffsetBlendSpace1D"),TEXT("/Script/Engine"),    TEXT("AimOffsetBlendSpace1D") },
+            { TEXT("AnimBlueprint"),        TEXT("/Script/Engine"),    TEXT("AnimBlueprint") },
+            { TEXT("AnimComposite"),        TEXT("/Script/Engine"),    TEXT("AnimComposite") },
+            { TEXT("Skeleton"),             TEXT("/Script/Engine"),    TEXT("Skeleton") },
+            { TEXT("SkeletalMesh"),         TEXT("/Script/Engine"),    TEXT("SkeletalMesh") },
+            { TEXT("PhysicsAsset"),         TEXT("/Script/Engine"),    TEXT("PhysicsAsset") },
+            // Meshes
+            { TEXT("StaticMesh"),           TEXT("/Script/Engine"),    TEXT("StaticMesh") },
+            // Materials
+            { TEXT("Material"),             TEXT("/Script/Engine"),    TEXT("Material") },
+            { TEXT("MaterialInterface"),    TEXT("/Script/Engine"),    TEXT("MaterialInterface") },
+            { TEXT("MaterialInstance"),     TEXT("/Script/Engine"),    TEXT("MaterialInstance") },
+            { TEXT("MaterialInstanceConstant"), TEXT("/Script/Engine"), TEXT("MaterialInstanceConstant") },
+            // Textures
+            { TEXT("Texture"),              TEXT("/Script/Engine"),    TEXT("Texture") },
+            { TEXT("Texture2D"),            TEXT("/Script/Engine"),    TEXT("Texture2D") },
+            { TEXT("TextureCube"),          TEXT("/Script/Engine"),    TEXT("TextureCube") },
+            // Blueprints & classes
+            { TEXT("Blueprint"),            TEXT("/Script/Engine"),    TEXT("Blueprint") },
+            { TEXT("UserDefinedEnum"),      TEXT("/Script/Engine"),    TEXT("UserDefinedEnum") },
+            { TEXT("UserDefinedStruct"),    TEXT("/Script/Engine"),    TEXT("UserDefinedStruct") },
+            { TEXT("DataTable"),            TEXT("/Script/Engine"),    TEXT("DataTable") },
+            { TEXT("DataAsset"),            TEXT("/Script/Engine"),    TEXT("DataAsset") },
+            // Audio
+            { TEXT("SoundBase"),            TEXT("/Script/Engine"),    TEXT("SoundBase") },
+            { TEXT("SoundWave"),            TEXT("/Script/Engine"),    TEXT("SoundWave") },
+            { TEXT("SoundCue"),             TEXT("/Script/Engine"),    TEXT("SoundCue") },
+            // Niagara (if plugin enabled)
+            { TEXT("NiagaraSystem"),        TEXT("/Script/Niagara"),   TEXT("NiagaraSystem") },
+        };
+
+        for (const FKnownClass& K : Known)
+        {
+            if (Name.Equals(K.ShortName, ESearchCase::IgnoreCase))
+            {
+                return FTopLevelAssetPath(FName(K.PackageName), FName(K.ClassName));
+            }
+        }
+
+        // Last-resort: try reflection for any engine-loaded UClass with this short name.
+        if (UClass* Found = FindFirstObject<UClass>(*Name, EFindFirstObjectOptions::NativeFirst))
+        {
+            return Found->GetClassPathName();
+        }
+
+        return FTopLevelAssetPath();
+    }
+}
+
+TSharedPtr<FJsonObject> FEpicUnrealMCPEditorCommands::HandleSearchAssets(const TSharedPtr<FJsonObject>& Params)
+{
+    // --- Parse class_names (required) ---
+    const TArray<TSharedPtr<FJsonValue>>* ClassNamesJson = nullptr;
+    if (!Params->TryGetArrayField(TEXT("class_names"), ClassNamesJson) || ClassNamesJson->Num() == 0)
+    {
+        return FEpicUnrealMCPCommonUtils::CreateErrorResponse(
+            TEXT("Missing required parameter 'class_names' (non-empty array of asset class short names or /Script/Module.Class paths)"));
+    }
+
+    TArray<FString> RequestedClassNames;
+    TArray<FTopLevelAssetPath> ResolvedClassPaths;
+    TArray<FString> UnresolvedClassNames;
+    for (const TSharedPtr<FJsonValue>& Value : *ClassNamesJson)
+    {
+        if (!Value.IsValid() || Value->Type != EJson::String)
+        {
+            continue;
+        }
+        const FString Short = Value->AsString();
+        RequestedClassNames.Add(Short);
+
+        const FTopLevelAssetPath Path = ResolveAssetClassPath(Short);
+        if (Path.IsValid())
+        {
+            ResolvedClassPaths.AddUnique(Path);
+        }
+        else
+        {
+            UnresolvedClassNames.Add(Short);
+        }
+    }
+
+    if (ResolvedClassPaths.Num() == 0)
+    {
+        TSharedPtr<FJsonObject> Err = FEpicUnrealMCPCommonUtils::CreateErrorResponse(
+            TEXT("No class_names could be resolved to an asset class. Pass either a known short name (e.g. 'AnimSequence') or a fully-qualified path (e.g. '/Script/Engine.AnimSequence')."));
+        TArray<TSharedPtr<FJsonValue>> UnresolvedJson;
+        for (const FString& Unresolved : UnresolvedClassNames)
+        {
+            UnresolvedJson.Add(MakeShared<FJsonValueString>(Unresolved));
+        }
+        Err->SetArrayField(TEXT("unresolved_class_names"), UnresolvedJson);
+        return Err;
+    }
+
+    // --- Parse paths (optional; default ["/Game/"]) ---
+    TArray<FString> SearchPaths;
+    const TArray<TSharedPtr<FJsonValue>>* PathsJson = nullptr;
+    if (Params->TryGetArrayField(TEXT("paths"), PathsJson))
+    {
+        for (const TSharedPtr<FJsonValue>& Value : *PathsJson)
+        {
+            if (Value.IsValid() && Value->Type == EJson::String)
+            {
+                FString P = Value->AsString().TrimStartAndEnd();
+                if (P.IsEmpty()) continue;
+                if (!P.StartsWith(TEXT("/"))) P = TEXT("/") + P;
+                // Trailing slash not required by AssetRegistry but keep paths consistent
+                SearchPaths.AddUnique(P);
+            }
+        }
+    }
+    if (SearchPaths.Num() == 0)
+    {
+        SearchPaths.Add(TEXT("/Game/"));
+    }
+
+    bool bIncludeEngine = false;
+    Params->TryGetBoolField(TEXT("include_engine"), bIncludeEngine);
+    if (bIncludeEngine)
+    {
+        SearchPaths.AddUnique(TEXT("/Engine/"));
+    }
+
+    bool bRecursivePaths = true;
+    Params->TryGetBoolField(TEXT("recursive"), bRecursivePaths);
+
+    bool bRecursiveClasses = true;
+    Params->TryGetBoolField(TEXT("recursive_classes"), bRecursiveClasses);
+
+    int32 MaxResults = 1000;
+    if (Params->HasField(TEXT("max_results")))
+    {
+        double Raw = 0.0;
+        if (Params->TryGetNumberField(TEXT("max_results"), Raw))
+        {
+            MaxResults = FMath::Clamp((int32)Raw, 1, 5000);
+        }
+    }
+
+    // --- Build filter & query AssetRegistry ---
+    FAssetRegistryModule& AssetRegistryModule =
+        FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
+    IAssetRegistry& AssetRegistry = AssetRegistryModule.Get();
+
+    FARFilter Filter;
+    for (const FTopLevelAssetPath& ClassPath : ResolvedClassPaths)
+    {
+        Filter.ClassPaths.Add(ClassPath);
+    }
+    for (const FString& P : SearchPaths)
+    {
+        Filter.PackagePaths.Add(FName(*P));
+    }
+    Filter.bRecursivePaths = bRecursivePaths;
+    Filter.bRecursiveClasses = bRecursiveClasses;
+
+    TArray<FAssetData> AssetDataArray;
+    AssetRegistry.GetAssets(Filter, AssetDataArray);
+
+    // --- Format response ---
+    const int32 TotalFound = AssetDataArray.Num();
+    const int32 ReturnCount = FMath::Min(TotalFound, MaxResults);
+
+    TArray<TSharedPtr<FJsonValue>> AssetArray;
+    AssetArray.Reserve(ReturnCount);
+    for (int32 i = 0; i < ReturnCount; ++i)
+    {
+        const FAssetData& AssetData = AssetDataArray[i];
+        TSharedPtr<FJsonObject> AssetObj = MakeShared<FJsonObject>();
+        AssetObj->SetStringField(TEXT("name"), AssetData.AssetName.ToString());
+        AssetObj->SetStringField(TEXT("path"), AssetData.GetObjectPathString());
+        AssetObj->SetStringField(TEXT("package"), AssetData.PackageName.ToString());
+        AssetObj->SetStringField(TEXT("class"), AssetData.AssetClassPath.ToString());
+        AssetArray.Add(MakeShared<FJsonValueObject>(AssetObj));
+    }
+
+    TSharedPtr<FJsonObject> Result = MakeShared<FJsonObject>();
+    Result->SetArrayField(TEXT("assets"), AssetArray);
+    Result->SetNumberField(TEXT("count"), ReturnCount);
+    Result->SetNumberField(TEXT("total_found"), TotalFound);
+    Result->SetBoolField(TEXT("truncated"), TotalFound > ReturnCount);
+
+    // Echo back what was searched so the caller can diagnose empty results.
+    TArray<TSharedPtr<FJsonValue>> SearchPathsJson;
+    for (const FString& P : SearchPaths) { SearchPathsJson.Add(MakeShared<FJsonValueString>(P)); }
+    Result->SetArrayField(TEXT("searched_paths"), SearchPathsJson);
+
+    TArray<TSharedPtr<FJsonValue>> ResolvedClassJson;
+    for (const FTopLevelAssetPath& ClassPath : ResolvedClassPaths)
+    {
+        ResolvedClassJson.Add(MakeShared<FJsonValueString>(ClassPath.ToString()));
+    }
+    Result->SetArrayField(TEXT("resolved_class_paths"), ResolvedClassJson);
+
+    if (UnresolvedClassNames.Num() > 0)
+    {
+        TArray<TSharedPtr<FJsonValue>> UnresolvedJson;
+        for (const FString& U : UnresolvedClassNames)
+        {
+            UnresolvedJson.Add(MakeShared<FJsonValueString>(U));
+        }
+        Result->SetArrayField(TEXT("unresolved_class_names"), UnresolvedJson);
+    }
+
+    return Result;
 }

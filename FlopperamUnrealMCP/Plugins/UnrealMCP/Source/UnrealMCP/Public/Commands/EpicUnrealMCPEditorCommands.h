@@ -25,4 +25,7 @@ private:
 
     // Blueprint actor spawning
     TSharedPtr<FJsonObject> HandleSpawnBlueprintActor(const TSharedPtr<FJsonObject>& Params);
+
+    // Generalized asset search (by class + paths) — built on FARFilter / FTopLevelAssetPath
+    TSharedPtr<FJsonObject> HandleSearchAssets(const TSharedPtr<FJsonObject>& Params);
 }; 

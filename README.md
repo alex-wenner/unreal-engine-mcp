@@ -1,76 +1,3 @@
-## Update 03/25/2026
----
-## Flop MCP
-
-One URL, one API key. If your AI tool supports MCP, it can inspect, search, and build inside your running Unreal Editor right now. Works with **Cursor, Claude Code, Windsurf, Cline, VS Code Copilot, OpenClaw**, and any other MCP client.
-
-### Quick Setup (Remote MCP)
-
-The fastest way to get Unreal Engine tools in your IDE is the hosted **Flop MCP** at [flopperam.com/mcp](https://flopperam.com/mcp). No local server, no Python install — just a URL and an API key.
-
-1. **Get an API key** at [flopperam.com/account](https://flopperam.com/account)
-2. **Install the Unreal plugin in your project** — see [flopperam.com/docs](https://flopperam.com/docs). Go to the Installation tab for instructions.
-3. **Add the config to your IDE:**
-
-**Cursor** — `.cursor/mcp.json` (project) or `~/.cursor/mcp.json` (global):
-```json
-{
-  "mcpServers": {
-    "flopperam-unreal": {
-      "url": "https://agent.flopperam.com/mcp",
-      "headers": {
-        "Authorization": "Bearer YOUR_API_KEY"
-      }
-    }
-  }
-}
-```
-
-**Claude Code** — run in your terminal:
-```bash
-claude mcp add -H "Authorization: Bearer YOUR_API_KEY" --transport http flopperam-unreal https://agent.flopperam.com/mcp
-```
-
-**Cline / Local LLMs** (Ollama, LM Studio, etc.):
-```json
-{
-  "mcpServers": {
-    "flopperam-unreal": {
-      "type": "streamableHttp",
-      "url": "https://agent.flopperam.com/mcp",
-      "headers": {
-        "Authorization": "Bearer YOUR_API_KEY"
-      }
-    }
-  }
-}
-```
-
-That's it — verify the server shows as connected in your IDE and start prompting.
-
----
-
-## The Flop Agent — [flopperam.com](https://flopperam.com/)
-
-The Flop MCP gives your IDE data. **The Flop Agent** is a fully autonomous AI that lives inside Unreal Engine — it plans multi-step workflows, writes and executes code, recovers from errors, and iterates until the job is done.
-
-- **Dynamic workflows** — decomposes complex requests into steps and adapts when something goes wrong
-- **Unreal-native reasoning** — tuned prompts, specialized routing, deep knowledge of UE APIs and Blueprints
-- **Full Blueprint creation and editing** — create new Blueprints, add variables/components/events/functions, update graph logic, compile and validate
-- **World building** — creates materials, places actors, builds structures, and verifies as it goes
-- **Code execution** — executes commands directly inside the editor — spawning actors, editing Blueprints, building levels
-- **Multiple AI models** — routes to the best model per task (Opus for reasoning, Flash for lookups)
-- **Chat inside Unreal** — embedded browser panel, no window switching
-- **Text/image to 3D** — three quality tiers (Good, High Quality, Very High Quality)
-
-Supports Unreal Engine 5.5, 5.6, and 5.7. Full docs at [flopperam.com/docs](https://flopperam.com/docs).
-
-<img width="800" alt="Flop AI creating a health system in BP_MyPlayer2 from a natural language prompt" src="assets/blueprint_modification2.png" />
-
-<img width="800" alt="Flop AI building a full combat system in BP_Combat99 with health, armor, stamina, combo, and more" src="assets/blueprint_modification.png" />
-
----
-
 # The Most Advanced MCP Server for Unreal Engine
 
 **Control Unreal Engine 5.5+ through AI with natural language** — This MCP server enables AI clients to build incredible 3D worlds and architectural masterpieces. Create entire towns, medieval castles, modern mansions, challenging mazes, and complex structures with AI-powered commands.
@@ -143,12 +70,13 @@ Check out these examples of the MCP server in action on our channel:
 
 | **Category** | **Tools** | **Description** |
 |--------------|-----------|-----------------|
-| **Blueprint Visual Scripting** | `add_node`, `connect_nodes`, `delete_node`, `set_node_property`, `create_variable`, `set_blueprint_variable_properties`, `create_function`, `add_function_input`, `add_function_output`, `delete_function`, `rename_function` | Complete Blueprint programming with 23+ node types, variables with full property control, custom functions, and dynamic graph management |
+| **Blueprint Visual Scripting** | `add_node`, `connect_nodes`, `delete_node`, `set_node_property`, `create_variable`, `set_blueprint_variable_properties`, `create_function`, `add_function_input`, `add_function_output`, `delete_function`, `rename_function` | Complete Blueprint programming with 23+ node types, variables with full property control, custom functions, and dynamic graph management. `connect_nodes` validates via the K2 schema and returns rich `error_details` (available nodes/pins, pin types, schema messages) on failure so agents can self-correct. |
 | **Blueprint Analysis** | `read_blueprint_content`, `analyze_blueprint_graph`, `get_blueprint_variable_details`, `get_blueprint_function_details` | Deep inspection of Blueprint structure, event graphs, execution flow, variables, and functions |
+| **Asset Discovery** | `search_assets`, `find_animation_assets`, `get_available_materials` | Generalized Asset Registry search by class + paths (animations, meshes, blueprints, textures, sounds, ...); `find_animation_assets` is a preset over common animation classes |
 | **World Building** | `create_town`, `construct_house`, `construct_mansion`, `create_tower`, `create_arch`, `create_staircase` | Build complex architectural structures and entire settlements |
 | **Epic Structures** | `create_castle_fortress`, `create_suspension_bridge`, `create_aqueduct` | Massive engineering marvels and medieval fortresses |
 | **Level Design** | `create_maze`, `create_pyramid`, `create_wall` | Design challenging game levels and puzzles |
-| **Physics & Materials** | `spawn_physics_blueprint_actor`, `set_physics_properties`, `get_available_materials`, `apply_material_to_actor`, `apply_material_to_blueprint`, `set_mesh_material_color` | Create realistic physics simulations and material systems |
+| **Physics & Materials** | `spawn_physics_blueprint_actor`, `set_physics_properties`, `apply_material_to_actor`, `apply_material_to_blueprint`, `set_mesh_material_color` | Create realistic physics simulations and material systems |
 | **Blueprint System** | `create_blueprint`, `compile_blueprint`, `add_component_to_blueprint`, `set_static_mesh_properties` | Visual scripting and custom actor creation |
 | **Actor Management** | `get_actors_in_level`, `find_actors_by_name`, `delete_actor`, `set_actor_transform`, `get_actor_material_info` | Precise control over scene objects and inspection |
 

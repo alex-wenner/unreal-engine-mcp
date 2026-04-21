@@ -3,6 +3,7 @@
 #include "Engine/Blueprint.h"
 #include "K2Node.h"
 #include "EdGraph/EdGraph.h"
+#include "EdGraph/EdGraphNode.h"
 #include "EdGraph/EdGraphPin.h"
 #include "EdGraphSchema_K2.h"
 #include "Kismet2/KismetEditorUtilities.h"
@@ -12,7 +13,7 @@ TSharedPtr<FJsonObject> FBPConnector::ConnectNodes(const TSharedPtr<FJsonObject>
 {
     TSharedPtr<FJsonObject> Result = MakeShared<FJsonObject>();
 
-    // Extraire paramètres
+    // Extract parameters
     FString BlueprintName = Params->GetStringField(TEXT("blueprint_name"));
     FString SourceNodeId = Params->GetStringField(TEXT("source_node_id"));
     FString SourcePinName = Params->GetStringField(TEXT("source_pin_name"));
@@ -22,7 +23,7 @@ TSharedPtr<FJsonObject> FBPConnector::ConnectNodes(const TSharedPtr<FJsonObject>
     FString FunctionName;
     Params->TryGetStringField(TEXT("function_name"), FunctionName);
 
-    // Charger Blueprint - handle both full paths and simple names
+    // Load Blueprint - handle both full paths and simple names
     UBlueprint* Blueprint = nullptr;
     FString BlueprintPath = BlueprintName;
 
@@ -54,8 +55,13 @@ TSharedPtr<FJsonObject> FBPConnector::ConnectNodes(const TSharedPtr<FJsonObject>
 
     if (!Blueprint)
     {
-        Result->SetBoolField("success", false);
-        Result->SetStringField("error", "Blueprint not found");
+        Result->SetBoolField(TEXT("success"), false);
+        Result->SetStringField(TEXT("error"), TEXT("Blueprint not found"));
+
+        TSharedPtr<FJsonObject> Details = MakeShared<FJsonObject>();
+        Details->SetStringField(TEXT("requested_blueprint"), BlueprintName);
+        Details->SetStringField(TEXT("resolved_path"), BlueprintPath);
+        Result->SetObjectField(TEXT("error_details"), Details);
         return Result;
     }
 
@@ -90,8 +96,21 @@ TSharedPtr<FJsonObject> FBPConnector::ConnectNodes(const TSharedPtr<FJsonObject>
 
         if (!Graph)
         {
-            Result->SetBoolField("success", false);
-            Result->SetStringField("error", FString::Printf(TEXT("Function graph not found: %s"), *FunctionName));
+            Result->SetBoolField(TEXT("success"), false);
+            Result->SetStringField(TEXT("error"), FString::Printf(TEXT("Function graph not found: %s"), *FunctionName));
+
+            // Diagnostic: list available function graphs on this blueprint
+            TArray<TSharedPtr<FJsonValue>> AvailableFuncs;
+            for (UEdGraph* FuncGraph : Blueprint->FunctionGraphs)
+            {
+                if (FuncGraph)
+                {
+                    AvailableFuncs.Add(MakeShared<FJsonValueString>(FuncGraph->GetFName().ToString()));
+                }
+            }
+            TSharedPtr<FJsonObject> Details = MakeShared<FJsonObject>();
+            Details->SetArrayField(TEXT("available_function_graphs"), AvailableFuncs);
+            Result->SetObjectField(TEXT("error_details"), Details);
             return Result;
         }
     }
@@ -100,8 +119,8 @@ TSharedPtr<FJsonObject> FBPConnector::ConnectNodes(const TSharedPtr<FJsonObject>
         // Use event graph if no function specified
         if (Blueprint->UbergraphPages.Num() == 0)
         {
-            Result->SetBoolField("success", false);
-            Result->SetStringField("error", "Blueprint has no event graph");
+            Result->SetBoolField(TEXT("success"), false);
+            Result->SetStringField(TEXT("error"), TEXT("Blueprint has no event graph"));
             return Result;
         }
 
@@ -110,8 +129,8 @@ TSharedPtr<FJsonObject> FBPConnector::ConnectNodes(const TSharedPtr<FJsonObject>
 
     if (!Graph)
     {
-        Result->SetBoolField("success", false);
-        Result->SetStringField("error", "Graph not found");
+        Result->SetBoolField(TEXT("success"), false);
+        Result->SetStringField(TEXT("error"), TEXT("Graph not found"));
         return Result;
     }
 
@@ -121,48 +140,116 @@ TSharedPtr<FJsonObject> FBPConnector::ConnectNodes(const TSharedPtr<FJsonObject>
 
     if (!SourceNode || !TargetNode)
     {
-        Result->SetBoolField("success", false);
-        Result->SetStringField("error", "Node not found");
+        Result->SetBoolField(TEXT("success"), false);
+
+        TArray<FString> MissingIds;
+        if (!SourceNode) { MissingIds.Add(SourceNodeId); }
+        if (!TargetNode) { MissingIds.Add(TargetNodeId); }
+        Result->SetStringField(TEXT("error"),
+            FString::Printf(TEXT("Node not found: %s"), *FString::Join(MissingIds, TEXT(", "))));
+
+        // Diagnostic: list every node id + title in the graph so the caller can self-correct
+        TSharedPtr<FJsonObject> Details = MakeShared<FJsonObject>();
+        Details->SetArrayField(TEXT("available_nodes"), BuildNodeSummaries(Graph));
+        TArray<TSharedPtr<FJsonValue>> MissingJson;
+        for (const FString& Id : MissingIds)
+        {
+            MissingJson.Add(MakeShared<FJsonValueString>(Id));
+        }
+        Details->SetArrayField(TEXT("missing_node_ids"), MissingJson);
+        Result->SetObjectField(TEXT("error_details"), Details);
         return Result;
     }
 
-    // Trouver pins
+    // Find pins
     UEdGraphPin* SourcePin = FindPinByName(SourceNode, SourcePinName, EGPD_Output);
     UEdGraphPin* TargetPin = FindPinByName(TargetNode, TargetPinName, EGPD_Input);
 
     if (!SourcePin || !TargetPin)
     {
-        Result->SetBoolField("success", false);
-        Result->SetStringField("error", "Pin not found");
+        Result->SetBoolField(TEXT("success"), false);
+
+        TArray<FString> MissingPins;
+        if (!SourcePin) { MissingPins.Add(FString::Printf(TEXT("output '%s' on %s"), *SourcePinName, *SourceNodeId)); }
+        if (!TargetPin) { MissingPins.Add(FString::Printf(TEXT("input '%s' on %s"), *TargetPinName, *TargetNodeId)); }
+        Result->SetStringField(TEXT("error"),
+            FString::Printf(TEXT("Pin not found: %s"), *FString::Join(MissingPins, TEXT(", "))));
+
+        // Diagnostic: list all pins on each node so the caller can pick the right one
+        TSharedPtr<FJsonObject> Details = MakeShared<FJsonObject>();
+        TSharedPtr<FJsonObject> SourcePins = MakeShared<FJsonObject>();
+        SourcePins->SetStringField(TEXT("node_id"), SourceNodeId);
+        SourcePins->SetArrayField(TEXT("pins"), BuildPinSummaries(SourceNode));
+        Details->SetObjectField(TEXT("source_node"), SourcePins);
+
+        TSharedPtr<FJsonObject> TargetPins = MakeShared<FJsonObject>();
+        TargetPins->SetStringField(TEXT("node_id"), TargetNodeId);
+        TargetPins->SetArrayField(TEXT("pins"), BuildPinSummaries(TargetNode));
+        Details->SetObjectField(TEXT("target_node"), TargetPins);
+
+        Result->SetObjectField(TEXT("error_details"), Details);
         return Result;
     }
 
-    // Validate compatibility
-    if (!ArePinsCompatible(SourcePin, TargetPin))
+    // Validate compatibility using the K2 schema (handles exec, wildcards, struct/object conversions,
+    // BREAK_OTHERS_A/B and MAKE_WITH_CONVERSION cases correctly — unlike a raw category compare).
+    const UEdGraphSchema_K2* K2Schema = GetDefault<UEdGraphSchema_K2>();
+    const FPinConnectionResponse ConnectionResponse = K2Schema->CanCreateConnection(SourcePin, TargetPin);
+
+    const bool bCanConnect =
+        ConnectionResponse.Response == CONNECT_RESPONSE_MAKE ||
+        ConnectionResponse.Response == CONNECT_RESPONSE_BREAK_OTHERS_A ||
+        ConnectionResponse.Response == CONNECT_RESPONSE_BREAK_OTHERS_B ||
+        ConnectionResponse.Response == CONNECT_RESPONSE_BREAK_OTHERS_AB ||
+        ConnectionResponse.Response == CONNECT_RESPONSE_MAKE_WITH_CONVERSION;
+
+    if (!bCanConnect)
     {
-        Result->SetBoolField("success", false);
-        Result->SetStringField("error", "Pins not compatible");
+        Result->SetBoolField(TEXT("success"), false);
+        const FString SchemaMessage = ConnectionResponse.Message.ToString();
+        if (!SchemaMessage.IsEmpty())
+        {
+            Result->SetStringField(TEXT("error"),
+                FString::Printf(TEXT("Pins not compatible: %s"), *SchemaMessage));
+        }
+        else
+        {
+            Result->SetStringField(TEXT("error"), TEXT("Pins not compatible"));
+        }
+
+        TSharedPtr<FJsonObject> Details = MakeShared<FJsonObject>();
+        Details->SetStringField(TEXT("schema_message"), SchemaMessage);
+        Details->SetStringField(TEXT("source_pin_type"), DescribePinType(SourcePin));
+        Details->SetStringField(TEXT("target_pin_type"), DescribePinType(TargetPin));
+        Details->SetNumberField(TEXT("schema_response_code"), (int32)ConnectionResponse.Response);
+        Result->SetObjectField(TEXT("error_details"), Details);
         return Result;
     }
 
-    // Create connection
-    SourcePin->MakeLinkTo(TargetPin);
+    // Use the schema's TryCreateConnection so conversion nodes etc. are inserted when required.
+    // Fall back to MakeLinkTo if the schema can't perform it for some reason.
+    if (!K2Schema->TryCreateConnection(SourcePin, TargetPin))
+    {
+        SourcePin->MakeLinkTo(TargetPin);
+    }
 
     // Recompile
     Blueprint->MarkPackageDirty();
     FKismetEditorUtilities::CompileBlueprint(Blueprint);
 
     // Return
-    Result->SetBoolField("success", true);
+    Result->SetBoolField(TEXT("success"), true);
 
     TSharedPtr<FJsonObject> ConnectionInfo = MakeShared<FJsonObject>();
-    ConnectionInfo->SetStringField("source_node", SourceNodeId);
-    ConnectionInfo->SetStringField("source_pin", SourcePinName);
-    ConnectionInfo->SetStringField("target_node", TargetNodeId);
-    ConnectionInfo->SetStringField("target_pin", TargetPinName);
-    ConnectionInfo->SetStringField("connection_type", SourcePin->PinType.PinCategory.ToString());
+    ConnectionInfo->SetStringField(TEXT("source_node"), SourceNodeId);
+    ConnectionInfo->SetStringField(TEXT("source_pin"), SourcePinName);
+    ConnectionInfo->SetStringField(TEXT("target_node"), TargetNodeId);
+    ConnectionInfo->SetStringField(TEXT("target_pin"), TargetPinName);
+    ConnectionInfo->SetStringField(TEXT("connection_type"), SourcePin->PinType.PinCategory.ToString());
+    ConnectionInfo->SetStringField(TEXT("source_pin_type"), DescribePinType(SourcePin));
+    ConnectionInfo->SetStringField(TEXT("target_pin_type"), DescribePinType(TargetPin));
 
-    Result->SetObjectField("connection", ConnectionInfo);
+    Result->SetObjectField(TEXT("connection"), ConnectionInfo);
 
     return Result;
 }
@@ -201,9 +288,13 @@ UK2Node* FBPConnector::FindNodeById(UEdGraph* Graph, const FString& NodeId)
 
 UEdGraphPin* FBPConnector::FindPinByName(UK2Node* Node, const FString& PinName, EEdGraphPinDirection Direction)
 {
+    if (!Node)
+    {
+        return nullptr;
+    }
     for (UEdGraphPin* Pin : Node->Pins)
     {
-        if (Pin->PinName.ToString() == PinName && Pin->Direction == Direction)
+        if (Pin && Pin->PinName.ToString() == PinName && Pin->Direction == Direction)
         {
             return Pin;
         }
@@ -211,12 +302,98 @@ UEdGraphPin* FBPConnector::FindPinByName(UK2Node* Node, const FString& PinName, 
     return nullptr;
 }
 
-bool FBPConnector::ArePinsCompatible(UEdGraphPin* SourcePin, UEdGraphPin* TargetPin)
+TArray<TSharedPtr<FJsonValue>> FBPConnector::BuildNodeSummaries(UEdGraph* Graph)
 {
-    if (SourcePin->Direction != EGPD_Output || TargetPin->Direction != EGPD_Input)
+    TArray<TSharedPtr<FJsonValue>> NodeArray;
+    if (!Graph)
     {
-        return false;
+        return NodeArray;
     }
 
-    return SourcePin->PinType.PinCategory == TargetPin->PinType.PinCategory;
+    for (UEdGraphNode* Node : Graph->Nodes)
+    {
+        if (!Node)
+        {
+            continue;
+        }
+
+        TSharedPtr<FJsonObject> NodeObj = MakeShared<FJsonObject>();
+        NodeObj->SetStringField(TEXT("guid"), Node->NodeGuid.ToString());
+        NodeObj->SetStringField(TEXT("name"), Node->GetName());
+        NodeObj->SetStringField(TEXT("title"), Node->GetNodeTitle(ENodeTitleType::ListView).ToString());
+        NodeObj->SetStringField(TEXT("class"), Node->GetClass()->GetName());
+        NodeArray.Add(MakeShared<FJsonValueObject>(NodeObj));
+    }
+    return NodeArray;
+}
+
+TArray<TSharedPtr<FJsonValue>> FBPConnector::BuildPinSummaries(UEdGraphNode* Node)
+{
+    TArray<TSharedPtr<FJsonValue>> PinArray;
+    if (!Node)
+    {
+        return PinArray;
+    }
+
+    for (UEdGraphPin* Pin : Node->Pins)
+    {
+        if (!Pin)
+        {
+            continue;
+        }
+
+        TSharedPtr<FJsonObject> PinObj = MakeShared<FJsonObject>();
+        PinObj->SetStringField(TEXT("name"), Pin->PinName.ToString());
+        PinObj->SetStringField(TEXT("direction"), Pin->Direction == EGPD_Output ? TEXT("output") : TEXT("input"));
+        PinObj->SetStringField(TEXT("type"), DescribePinType(Pin));
+        PinObj->SetStringField(TEXT("category"), Pin->PinType.PinCategory.ToString());
+        if (!Pin->PinType.PinSubCategory.IsNone())
+        {
+            PinObj->SetStringField(TEXT("sub_category"), Pin->PinType.PinSubCategory.ToString());
+        }
+        if (Pin->PinType.PinSubCategoryObject.IsValid())
+        {
+            PinObj->SetStringField(TEXT("sub_category_object"), Pin->PinType.PinSubCategoryObject->GetName());
+        }
+        PinObj->SetBoolField(TEXT("is_array"), Pin->PinType.IsArray());
+        PinObj->SetBoolField(TEXT("is_reference"), Pin->PinType.bIsReference);
+        PinArray.Add(MakeShared<FJsonValueObject>(PinObj));
+    }
+    return PinArray;
+}
+
+FString FBPConnector::DescribePinType(UEdGraphPin* Pin)
+{
+    if (!Pin)
+    {
+        return TEXT("<null>");
+    }
+
+    const FEdGraphPinType& PinType = Pin->PinType;
+    FString Desc = PinType.PinCategory.ToString();
+    if (PinType.PinSubCategoryObject.IsValid())
+    {
+        Desc += FString::Printf(TEXT(":%s"), *PinType.PinSubCategoryObject->GetName());
+    }
+    else if (!PinType.PinSubCategory.IsNone())
+    {
+        Desc += FString::Printf(TEXT(":%s"), *PinType.PinSubCategory.ToString());
+    }
+    if (PinType.IsArray())
+    {
+        Desc += TEXT("[]");
+    }
+    else if (PinType.IsSet())
+    {
+        Desc += TEXT("{set}");
+    }
+    else if (PinType.IsMap())
+    {
+        Desc += TEXT("{map}");
+    }
+    if (PinType.bIsReference)
+    {
+        Desc += TEXT("&");
+    }
+    return Desc;
 }
