@@ -1,6 +1,6 @@
 # Unreal MCP Advanced Server
 
-A feature-rich Unreal MCP server that exposes **75 tools** across editor actor control, Blueprint authoring, graph inspection/editing/cleanup, C++ class scaffolding, asset discovery/import, materials, physics, animation-system validation, and advanced world generation.
+A feature-rich Unreal MCP server that exposes **64 tools** across editor actor control, Blueprint authoring, graph inspection/editing/cleanup, generic composition, C++ class scaffolding, asset discovery/import, materials, physics, and animation-system validation.
 
 ## What's Included
 
@@ -22,16 +22,9 @@ This server contains tools for advanced level building and composition plus lowe
 - `compile_blueprint(name)` - Compile Blueprint changes
 - `spawn_physics_blueprint_actor()` - Create and spawn a Blueprint-backed physics actor
 
-### Advanced Composition Tools
-*The main focus - advanced building and composition tools from the merge request*
-- `create_pyramid(base_size, block_size, location, ...)` - Build pyramids
-- `create_wall(length, height, block_size, location, orientation, ...)` - Generate walls
-- `create_tower(levels, block_size, location, ...)` - Stack towers
-- `create_staircase(steps, step_size, location, ...)` - Build staircases
-- `construct_house(width, depth, height, location, ...)` - **Enhanced** game-ready houses
-- `create_arch(radius, segments, location, ...)` - Arch structures
-- `spawn_physics_blueprint_actor (name, mesh_path, location, mass, ...)` - Physics objects
-- `create_maze(rows, cols, cell_size, wall_height, location)` - Grid mazes
+### Generic Composition Tools
+- `create_composition(composition_type, parameters)` - Dispatch to caller-selected parametric level composition helpers without exposing domain-specific tool names
+- `spawn_physics_blueprint_actor(name, mesh_path, location, mass, ...)` - Physics objects
 
 ### Fab-Safe Asset and Animation Workflows
 - `detect_fab_status()` / `open_fab_browser()` - Inspect/open Fab without automating auth, purchases, or downloads
@@ -45,16 +38,16 @@ This server contains tools for advanced level building and composition plus lowe
 
 Pose Search, Motion Warping, IK Rig, ALS, and similar plugin-owned asset classes are detected only when the corresponding plugins are already available and enabled in the user's project or engine install.
 
-### Blueprint Cleanup, C++ Alternatives, and Superhero Scaffolding
+### Blueprint Cleanup, C++ Alternatives, and Gameplay Scaffolding
 - `audit_blueprint()` - Find disconnected nodes, dense graphs, and maintainability issues
 - `organize_blueprint_graph()` - Dry-run or apply predictable Blueprint graph layout
 - `create_cpp_class()` - Generate safe Unreal C++ stubs for supported gameplay/framework classes
-- `validate_superhero_game_stack()` - Check GASP movement, flight, menu, customization, and ability-system readiness
-- `scaffold_superhero_cpp_classes()` - Preview or generate starter C++ classes for a superhero game
+- `validate_gameplay_stack()` - Check caller-defined plugins, asset classes, paths, and asset keywords
+- `scaffold_cpp_classes()` - Preview or generate caller-defined sets of C++ classes
 
-## Enhanced House Construction
+## Generic Composition
 
-The `construct_house` function has been significantly improved:
+The `create_composition` function exposes the composition helpers through one generic interface:
 
 ### Key Improvements:
 - **Faster Spawning**: Uses large wall segments instead of individual blocks (20-30 actors vs 300+)
@@ -75,13 +68,13 @@ The `construct_house` function has been significantly improved:
 ### Example Usage:
 ```python
 # Create a modern house
-construct_house(house_style="modern")
+create_composition(composition_type="building", parameters={"house_style": "modern"})
 
 # Create a cottage at specific location
-construct_house(location=[1000, 0, 0], house_style="cottage")
+create_composition(composition_type="building", parameters={"location": [1000, 0, 0], "house_style": "cottage"})
 
 # Create a large mansion
-construct_house(width=1500, depth=1200, house_style="mansion")
+create_composition(composition_type="large_building", parameters={"width": 1500, "depth": 1200})
 ```
 
 ## Not Yet Included
@@ -98,7 +91,7 @@ python unreal_mcp_server_advanced.py
 
 ## Benefits
 
-- **Feature-rich**: 75 tools covering composition, Blueprint graph work/cleanup, C++ scaffolding, materials, asset discovery/import, and animation workflow validation
+- **Feature-rich**: 64 tools covering composition, Blueprint graph work/cleanup, C++ scaffolding, materials, asset discovery/import, and animation workflow validation
 - **Focused**: Concentrates on editor automation for AI-assisted Unreal workflows
 - **Faster**: Reduced startup time and smaller tool list
 - **Maintainable**: Easier to understand and modify

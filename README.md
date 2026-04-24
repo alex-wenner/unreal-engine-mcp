@@ -43,22 +43,22 @@ Check out these examples of the MCP server in action on our channel:
 - **Graph Analysis**: Read complete Blueprint content, analyze execution flow, inspect variables
 - **Connection System**: Wire nodes together with automatic type validation
 
-### World Building & Architecture  
+### Parametric Composition
 ```bash
-# Create massive futuristic cities with skyscrapers, flying cars, and advanced infrastructure
-> "Build a massive futuristic city with towering skyscrapers"
-→ create_town(town_size="massive", architectural_style="futuristic", building_density=0.95)
+# Use one generic tool with a caller-selected composition type and parameters
+> "Build a large modular settlement layout"
+→ create_composition(composition_type="settlement", parameters={"town_size": "massive", "building_density": 0.95})
 
-# Build complex multi-room houses with windows, doors, and roofs
-> "Create a Victorian mansion complex with east and west wing houses."
-→ construct_house(house_style="mansion", width=1500, height=900)
+# Generate a building-scale composition
+> "Create a large multi-room building shell"
+→ create_composition(composition_type="building", parameters={"width": 1500, "height": 900})
 ```
 
-### Intelligent Mazes
+### Layout Generation
 ```bash
-# Generate solvable mazes with guaranteed paths using recursive backtracking
-> "Make a 15x15 maze with high walls"
-→ create_maze(rows=15, cols=15, wall_height=4, cell_size=250)
+# Generate a navigable layout with guaranteed paths
+> "Make a 15x15 grid layout with high walls"
+→ create_composition(composition_type="maze", parameters={"rows": 15, "cols": 15, "wall_height": 4, "cell_size": 250})
 ```
 
 ---
@@ -72,10 +72,8 @@ Check out these examples of the MCP server in action on our channel:
 | **Asset Discovery** | `search_assets`, `find_animation_assets`, `get_available_materials` | Generalized Asset Registry search by class + paths (animations, meshes, blueprints, textures, sounds, ...); `find_animation_assets` is a preset over common animation classes |
 | **Fab-Safe Asset Workflows** | `detect_fab_status`, `open_fab_browser`, `import_asset`, `bulk_import_assets`, `place_imported_asset`, `tag_imported_assets`, `move_asset`, `rename_asset`, `delete_asset`, `fix_redirectors`, `list_asset_dependencies`, `list_asset_references`, `generate_imported_asset_manifest` | Work with local files and already-licensed project content without automating Fab authentication, purchasing, or downloading |
 | **Animation System Integration** | `detect_gasp_assets`, `validate_motion_matching_setup`, `setup_gasp_character`, `retarget_to_gasp`, `detect_als_plugin`, `validate_als_character`, `setup_als_character`, `retarget_to_als` | Detect and validate GASP / ALS prerequisites, then guide safe dry-run setup and retargeting workflows |
-| **C++ & Superhero Game Scaffolding** | `create_cpp_class`, `validate_superhero_game_stack`, `scaffold_superhero_cpp_classes` | Generate safe Unreal C++ class stubs as an alternative to Blueprint logic and check/scaffold superhero-game systems like flight, menus, controllers, and customization |
-| **World Building** | `create_town`, `construct_house`, `construct_mansion`, `create_tower`, `create_arch`, `create_staircase` | Build complex architectural structures and entire settlements |
-| **Epic Structures** | `create_castle_fortress`, `create_suspension_bridge`, `create_aqueduct` | Massive engineering marvels and medieval fortresses |
-| **Level Design** | `create_maze`, `create_pyramid`, `create_wall` | Design challenging game levels and puzzles |
+| **C++ & Gameplay Scaffolding** | `create_cpp_class`, `validate_gameplay_stack`, `scaffold_cpp_classes` | Generate safe Unreal C++ class stubs as an alternative to Blueprint logic and validate/scaffold caller-defined gameplay systems |
+| **Parametric Composition** | `create_composition` | Build caller-selected level compositions through one generic dispatcher instead of domain-specific tool names |
 | **Physics & Materials** | `spawn_physics_blueprint_actor`, `set_physics_properties`, `apply_material_to_actor`, `apply_material_to_blueprint`, `set_mesh_material_color` | Create realistic physics simulations and material systems |
 | **Blueprint System** | `create_blueprint`, `compile_blueprint`, `add_component_to_blueprint`, `set_static_mesh_properties` | Visual scripting and custom actor creation |
 | **Actor Management** | `get_actors_in_level`, `find_actors_by_name`, `delete_actor`, `set_actor_transform`, `get_actor_material_info` | Precise control over scene objects and inspection |

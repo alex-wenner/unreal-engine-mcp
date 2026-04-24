@@ -112,12 +112,7 @@ class UnrealConnection:
     LARGE_OPERATION_COMMANDS = {
         "get_available_materials",
         "search_assets",
-        "create_town",
-        "create_castle_fortress", 
-        "construct_mansion",
-        "create_suspension_bridge",
-        "create_aqueduct",
-        "create_maze"
+        "create_composition"
     }
     
     def __init__(self):
@@ -877,7 +872,6 @@ def get_blueprint_function_details(
 
 
 # Advanced Composition Tools
-@mcp.tool()
 def create_pyramid(
     base_size: int = 3,
     block_size: float = 100.0,
@@ -917,7 +911,6 @@ def create_pyramid(
         logger.error(f"create_pyramid error: {e}")
         return {"success": False, "message": str(e)}
 
-@mcp.tool()
 def create_wall(
     length: int = 5,
     height: int = 2,
@@ -956,7 +949,6 @@ def create_wall(
         logger.error(f"create_wall error: {e}")
         return {"success": False, "message": str(e)}
 
-@mcp.tool()
 def create_tower(
     height: int = 10,
     base_size: int = 4,
@@ -1096,7 +1088,6 @@ def create_tower(
         logger.error(f"create_tower error: {e}")
         return {"success": False, "message": str(e)}
 
-@mcp.tool()
 def create_staircase(
     steps: int = 5,
     step_size: List[float] = [100.0, 100.0, 50.0],
@@ -1130,7 +1121,6 @@ def create_staircase(
         logger.error(f"create_staircase error: {e}")
         return {"success": False, "message": str(e)}
 
-@mcp.tool()
 def construct_house(
     width: int = 1200,
     depth: int = 1000,
@@ -1155,7 +1145,6 @@ def construct_house(
 
 
 
-@mcp.tool()
 def construct_mansion(
     mansion_scale: str = "large",  # "small", "large", "epic", "legendary"
     location: List[float] = [0.0, 0.0, 0.0],
@@ -1209,7 +1198,6 @@ def construct_mansion(
         logger.error(f"construct_mansion error: {e}")
         return {"success": False, "message": str(e)}
 
-@mcp.tool()
 def create_arch(
     radius: float = 300.0,
     segments: int = 6,
@@ -1310,7 +1298,6 @@ def spawn_physics_blueprint_actor (
         logger.error(f"spawn_physics_blueprint_actor  error: {e}")
         return {"success": False, "message": str(e)}
 
-@mcp.tool()
 def create_maze(
     rows: int = 8,
     cols: int = 8,
@@ -1579,7 +1566,6 @@ def set_mesh_material_color(
         return {"success": False, "message": str(e)}
 
 # Advanced Town Generation System
-@mcp.tool()
 def create_town(
     town_size: str = "medium",  # "small", "medium", "large", "metropolis"
     building_density: float = 0.7,  # 0.0 to 1.0
@@ -1749,7 +1735,6 @@ def create_town(
         return {"success": False, "message": str(e)}
 
 
-@mcp.tool()
 def create_castle_fortress(
     castle_size: str = "large",  # "small", "medium", "large", "epic"
     location: List[float] = [0.0, 0.0, 0.0],
@@ -1819,7 +1804,6 @@ def create_castle_fortress(
         logger.error(f"create_castle_fortress error: {e}")
         return {"success": False, "message": str(e)}
 
-@mcp.tool()
 def create_suspension_bridge(
     span_length: float = 6000.0,
     deck_width: float = 800.0,
@@ -1942,7 +1926,6 @@ def create_suspension_bridge(
         logger.error(f"create_suspension_bridge error: {e}")
         return {"success": False, "message": str(e)}
 
-@mcp.tool()
 def create_aqueduct(
     arches: int = 18,
     arch_radius: float = 600.0,
@@ -2074,6 +2057,44 @@ def create_aqueduct(
     except Exception as e:
         logger.error(f"create_aqueduct error: {e}")
         return {"success": False, "message": str(e)}
+
+
+@mcp.tool()
+def create_composition(composition_type: str, parameters: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """
+    Create a parametric level composition using a generic dispatcher.
+
+    Args:
+        composition_type: One of "pyramid", "wall", "tower", "staircase",
+            "building", "large_building", "arch", "maze", "settlement",
+            "fortification", "bridge", or "aqueduct".
+        parameters: Keyword arguments forwarded to the selected composition helper.
+    """
+    composition_map = {
+        "pyramid": create_pyramid,
+        "wall": create_wall,
+        "tower": create_tower,
+        "staircase": create_staircase,
+        "building": construct_house,
+        "large_building": construct_mansion,
+        "arch": create_arch,
+        "maze": create_maze,
+        "settlement": create_town,
+        "fortification": create_castle_fortress,
+        "bridge": create_suspension_bridge,
+        "aqueduct": create_aqueduct,
+    }
+    helper = composition_map.get(composition_type)
+    if not helper:
+        return {
+            "success": False,
+            "message": f"Unsupported composition_type: {composition_type}",
+            "supported_types": sorted(composition_map.keys()),
+        }
+    try:
+        return helper(**(parameters or {}))
+    except TypeError as e:
+        return {"success": False, "message": str(e), "composition_type": composition_type}
 
 
 
@@ -3067,40 +3088,46 @@ def create_cpp_class(
 
 
 @mcp.tool()
-def validate_superhero_game_stack(paths: Optional[List[str]] = None) -> Dict[str, Any]:
-    """Check for common systems needed by a superhero game: GASP movement, flight/C++ support, menus, and customization content."""
-    plugin_names = ["EnhancedInput", "PoseSearch", "MotionWarping", "GameplayAbilities", "CommonUI", "IKRig"]
-    plugins = detect_unreal_plugins(plugin_names)
-    search_paths = paths or ["/Game/"]
+def validate_gameplay_stack(
+    required_plugins: Optional[List[str]] = None,
+    asset_keywords: Optional[List[str]] = None,
+    class_names: Optional[List[str]] = None,
+    paths: Optional[List[str]] = None,
+    max_results: int = 2000,
+) -> Dict[str, Any]:
+    """Validate a configurable gameplay stack by checking plugins and project assets."""
+    plugins = detect_unreal_plugins(required_plugins or [])
     assets = search_assets(
-        class_names=["Blueprint", "AnimBlueprint", "SkeletalMesh", "Skeleton", "MaterialInterface", "DataAsset"],
-        paths=search_paths,
-        max_results=2000,
+        class_names=class_names or ["Blueprint", "AnimBlueprint", "SkeletalMesh", "Skeleton", "MaterialInterface", "DataAsset"],
+        paths=paths or ["/Game/"],
+        max_results=max_results,
     )
+
+    plugin_map = {plugin.get("name"): plugin for plugin in plugins.get("plugins", [])}
     asset_items = assets.get("assets", [])
     asset_names = " ".join(asset.get("name", "") for asset in asset_items).upper()
-    plugin_map = {plugin.get("name"): plugin for plugin in plugins.get("plugins", [])}
     issues = []
-    recommendations = []
-    for required in ["EnhancedInput", "PoseSearch", "MotionWarping"]:
-        if not plugin_map.get(required, {}).get("enabled"):
-            issues.append(f"Plugin '{required}' is not enabled")
-    if "FLIGHT" not in asset_names:
-        recommendations.append("Add a flight movement component/class or Blueprint system")
-    if "MENU" not in asset_names and "WIDGET" not in asset_names:
-        recommendations.append("Add menu widgets or CommonUI screen assets")
-    if "CUSTOM" not in asset_names and "COSMETIC" not in asset_names:
-        recommendations.append("Add character customization data/assets")
+
+    for plugin_name in required_plugins or []:
+        if not plugin_map.get(plugin_name, {}).get("enabled"):
+            issues.append(f"Plugin '{plugin_name}' is not enabled")
+
+    missing_keywords = []
+    for keyword in asset_keywords or []:
+        if keyword.upper() not in asset_names:
+            missing_keywords.append(keyword)
+            issues.append(f"No assets found matching keyword '{keyword}'")
+
     return {
         "success": len(issues) == 0,
         "issues": issues,
-        "recommendations": recommendations,
+        "missing_asset_keywords": missing_keywords,
         "plugins": plugins,
         "assets": assets,
         "suggested_next_tools": [
-            "scaffold_superhero_cpp_classes",
-            "detect_gasp_assets",
-            "validate_motion_matching_setup",
+            "scaffold_cpp_classes",
+            "search_assets",
+            "detect_unreal_plugins",
             "audit_blueprint",
             "organize_blueprint_graph",
         ],
@@ -3108,40 +3135,37 @@ def validate_superhero_game_stack(paths: Optional[List[str]] = None) -> Dict[str
 
 
 @mcp.tool()
-def scaffold_superhero_cpp_classes(
+def scaffold_cpp_classes(
+    class_specs: List[Dict[str, str]],
     module_name: Optional[str] = None,
-    prefix: str = "Hero",
     dry_run: bool = True,
     overwrite: bool = False,
 ) -> Dict[str, Any]:
-    """Generate or preview C++ class stubs for a superhero game architecture."""
-    class_specs = [
-        (f"{prefix}Character", "Character", "Characters"),
-        (f"{prefix}FlightComponent", "ActorComponent", "Abilities"),
-        (f"{prefix}CustomizationComponent", "ActorComponent", "Customization"),
-        (f"{prefix}GameMode", "GameModeBase", "Framework"),
-        (f"{prefix}PlayerController", "PlayerController", "Framework"),
-        (f"{prefix}MenuWidget", "UserWidget", "UI"),
+    """Generate or preview a caller-defined set of Unreal C++ class stubs."""
+    normalized_specs = [
+        {
+            "class_name": spec.get("class_name", ""),
+            "parent_class": spec.get("parent_class", "Actor"),
+            "subfolder": spec.get("subfolder", ""),
+        }
+        for spec in class_specs
     ]
     if dry_run:
         return {
             "success": True,
             "dry_run": True,
-            "classes": [
-                {"class_name": class_name, "parent_class": parent_class, "subfolder": subfolder}
-                for class_name, parent_class, subfolder in class_specs
-            ],
+            "classes": normalized_specs,
             "next_step": "Run with dry_run=False to write class files, then compile the Unreal project.",
         }
 
     results = []
     success = True
-    for class_name, parent_class, subfolder in class_specs:
+    for spec in normalized_specs:
         result = create_cpp_class(
-            class_name=class_name,
-            parent_class=parent_class,
+            class_name=spec["class_name"],
+            parent_class=spec["parent_class"],
             module_name=module_name,
-            subfolder=subfolder,
+            subfolder=spec["subfolder"] or None,
             dry_run=False,
             overwrite=overwrite,
         )

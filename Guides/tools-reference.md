@@ -2,131 +2,21 @@
 
 Reference documentation for the Unreal MCP Advanced Server. The canonical tool list is generated from `@mcp.tool()` functions in `Python/unreal_mcp_server_advanced.py`.
 
-## 🏗️ World Building Tools
+## 🏗️ Generic Composition Tool
 
-### create_town
-Create complete urban environments with buildings, roads, and infrastructure.
-
-**Parameters:**
-- `town_size` (string): "small", "medium", "large", or "metropolis"
-- `architectural_style` (string): "modern", "medieval", "suburban", "downtown", "mixed", or "futuristic"  
-- `building_density` (float, 0.0-1.0): How packed the buildings are
-- `location` (array): [X, Y, Z] world position for town center
-- `include_infrastructure` (bool): Add roads, utilities, etc.
-- `name_prefix` (string): Prefix for spawned building actors
-
-**Example:**
-```bash
-create_town(town_size="medium", architectural_style="modern", building_density=0.8, location=[0, 0, 0])
-```
-
-### construct_house  
-Build realistic multi-room houses with architectural details.
+### create_composition
+Create parametric level compositions through one generic dispatcher rather than exposing domain-specific tool names.
 
 **Parameters:**
-- `width` (int): House width in centimeters (default: 1200)
-- `depth` (int): House depth in centimeters (default: 1000)
-- `height` (int): Wall height in centimeters (default: 600)
-- `location` (array): House center position
-- `house_style` (string): "modern", "cottage", or "mansion"
-- `mesh` (string): Static mesh asset path
-- `name_prefix` (string): Prefix for house components
-
-**Features:**
-- **Foundation & Floor**: Proper structural base
-- **Room Division**: Interior walls creating realistic spaces
-- **Windows & Doors**: Authentic openings with proper sizing
-- **Pitched Roof**: Angled rooftop instead of flat surface
-- **Style Variations**: Different proportions and decorative elements
+- `composition_type` (string): One of `pyramid`, `wall`, `tower`, `staircase`, `building`, `large_building`, `arch`, `maze`, `settlement`, `fortification`, `bridge`, or `aqueduct`
+- `parameters` (object): Keyword arguments forwarded to the selected composition helper, such as dimensions, location, mesh path, spacing, density, or dry-run settings
 
 **Examples:**
 ```bash
-# Modern family home
-construct_house(house_style="modern", location=[0, 0, 0])
-
-# Large mansion
-construct_house(width=1500, depth=1200, house_style="mansion", location=[2000, 0, 0])
-
-# Cozy cottage  
-construct_house(house_style="cottage", location=[-1000, 1000, 0])
+create_composition(composition_type="building", parameters={"width": 1200, "depth": 1000, "location": [0, 0, 0]})
+create_composition(composition_type="maze", parameters={"rows": 12, "cols": 12, "wall_height": 4, "cell_size": 250})
+create_composition(composition_type="settlement", parameters={"town_size": "medium", "building_density": 0.8, "location": [0, 0, 0]})
 ```
-
-### create_tower
-Build architectural towers with various styles and decorative elements.
-
-**Parameters:**
-- `height` (int): Number of vertical levels (default: 10)
-- `base_size` (int): Base diameter/width (default: 4)
-- `tower_style` (string): "cylindrical", "square", or "tapered"
-- `block_size` (float): Size of building blocks in cm
-- `location` (array): Tower base center position
-- `mesh` (string): Static mesh for blocks
-- `name_prefix` (string): Actor naming prefix
-
-**Styles:**
-- **Cylindrical**: Round tower with blocks in circular pattern
-- **Square**: Hollow square tower with corner reinforcements  
-- **Tapered**: Tower that narrows toward the top
-
-**Example:**
-```bash
-create_tower(height=15, base_size=6, tower_style="cylindrical", location=[1000, 0, 0])
-```
-
-### create_arch
-Create decorative arch structures using blocks arranged in semicircles.
-
-**Parameters:**
-- `radius` (float): Arch radius in centimeters (default: 300)
-- `segments` (int): Number of blocks forming the arch (default: 6)
-- `location` (array): Arch center base position
-- `mesh` (string): Static mesh asset path
-- `name_prefix` (string): Actor naming prefix
-
-## 🧩 Level Design Tools
-
-### create_maze
-Generate solvable mazes using recursive backtracking algorithm.
-
-**Parameters:**
-- `rows` (int): Maze height in cells (default: 8)
-- `cols` (int): Maze width in cells (default: 8)  
-- `cell_size` (float): Size of each maze cell in cm (default: 300)
-- `wall_height` (int): Height of walls in block layers (default: 3)
-- `location` (array): Maze center position
-
-**Features:**
-- **Guaranteed Solvable**: Uses recursive backtracking for valid paths
-- **Clear Entrance/Exit**: Marked with distinctive objects
-- **Open Top Design**: Walls are limited height for aerial viewing
-- **Connected Layout**: Every cell is reachable from the entrance; recursive backtracking may still create dead ends as part of the challenge
-
-**Example:**
-```bash
-create_maze(rows=12, cols=12, wall_height=4, cell_size=250, location=[0, 0, 0])
-```
-
-### create_pyramid
-Build stepped pyramids from stacked blocks.
-
-**Parameters:**
-- `base_size` (int): Number of blocks on base edge (default: 3)
-- `block_size` (float): Edge length of each block in cm (default: 100)
-- `location` (array): Pyramid base center
-- `mesh` (string): Static mesh asset path
-- `name_prefix` (string): Actor naming prefix
-
-### create_wall
-Generate straight walls from repeated block elements.
-
-**Parameters:**
-- `length` (int): Number of blocks along wall (default: 5)
-- `height` (int): Number of block layers vertically (default: 2)
-- `block_size` (float): Block dimensions in cm (default: 100)
-- `location` (array): Wall starting position
-- `orientation` (string): Direction to extend - "x" or "y"
-- `mesh` (string): Static mesh asset path
-- `name_prefix` (string): Actor naming prefix
 
 ### create_staircase
 Build stepped staircases with configurable dimensions.
@@ -202,11 +92,11 @@ Lay out a Blueprint graph in a predictable grid. Runs as a dry-run by default an
 ### create_cpp_class
 Generate safe Unreal C++ `.h` / `.cpp` class stubs for supported parent types: Actor, Character, Pawn, GameModeBase, PlayerController, ActorComponent, and UserWidget.
 
-### validate_superhero_game_stack
-Check common superhero-game prerequisites: Enhanced Input, GASP/Pose Search/Motion Warping, Gameplay Abilities, CommonUI, flight-related assets, menus, and customization assets.
+### validate_gameplay_stack
+Validate a caller-defined gameplay stack by checking required plugins, asset classes, asset paths, and asset-name keywords.
 
-### scaffold_superhero_cpp_classes
-Preview or generate a starter C++ architecture for superhero projects: character, flight component, customization component, game mode, player controller, and menu widget.
+### scaffold_cpp_classes
+Preview or generate caller-defined C++ class stubs from a list of class specifications.
 
 
 ## 🎨 Blueprint System

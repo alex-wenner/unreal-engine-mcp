@@ -16,13 +16,17 @@ class ToolManifestTests(unittest.TestCase):
         self.assertIn("import_asset", tools)
         self.assertIn("bulk_import_assets", tools)
         self.assertIn("place_imported_asset", tools)
+        self.assertIn("create_composition", tools)
         self.assertIn("detect_gasp_assets", tools)
         self.assertIn("detect_als_plugin", tools)
         self.assertIn("audit_blueprint", tools)
         self.assertIn("organize_blueprint_graph", tools)
         self.assertIn("create_cpp_class", tools)
-        self.assertIn("validate_superhero_game_stack", tools)
-        self.assertIn("scaffold_superhero_cpp_classes", tools)
+        self.assertIn("validate_gameplay_stack", tools)
+        self.assertIn("scaffold_cpp_classes", tools)
+        self.assertNotIn("create_town", tools)
+        self.assertNotIn("construct_house", tools)
+        self.assertNotIn("create_castle_fortress", tools)
 
 
 if __name__ == "__main__":
