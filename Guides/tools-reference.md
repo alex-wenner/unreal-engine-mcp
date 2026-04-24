@@ -157,6 +157,39 @@ Create actors with custom physics properties and materials.
 3. Configures physics properties
 4. Compiles Blueprint and spawns actor
 
+## 📦 Fab-Safe Asset Workflows
+
+These tools work with local files and project content that is already available/licensed. They intentionally do not automate Fab authentication, purchases, or downloads.
+
+### detect_fab_status / open_fab_browser
+Detect whether Fab is installed/enabled, and open the editor Fab UI when available.
+
+### import_asset / bulk_import_assets
+Import already-downloaded local files into a `/Game/...` content path.
+
+### place_imported_asset / tag_imported_assets
+Place imported StaticMesh, SkeletalMesh, or Actor Blueprint assets in the level, then tag imported assets with editor metadata for later organization.
+
+### move_asset / rename_asset / delete_asset / fix_redirectors
+Organize imported/project assets and clean up redirectors after move/rename/delete operations.
+
+### list_asset_dependencies / list_asset_references / generate_imported_asset_manifest
+Inspect asset relationships and generate manifests for imported asset batches.
+
+## 🏃 GASP / ALS Detection and Validation
+
+### detect_gasp_assets / validate_motion_matching_setup
+Detect Game Animation Sample Project-style content, Pose Search / Motion Matching prerequisites, and common validation issues.
+
+### setup_gasp_character / retarget_to_gasp
+Wizard-style dry-run tools that validate prerequisites and report safe setup/retargeting actions.
+
+### detect_als_plugin / validate_als_character
+Detect ALS plugin variants/content and validate candidate ALS character or skeleton assets.
+
+### setup_als_character / retarget_to_als
+Wizard-style dry-run tools that validate prerequisites and report safe setup/retargeting actions.
+
 
 ## 🎨 Blueprint System
 

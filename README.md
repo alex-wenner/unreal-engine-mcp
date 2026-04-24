@@ -70,6 +70,8 @@ Check out these examples of the MCP server in action on our channel:
 | **Blueprint Visual Scripting** | `add_node`, `connect_nodes`, `delete_node`, `set_node_property`, `create_variable`, `set_blueprint_variable_properties`, `create_function`, `add_function_input`, `add_function_output`, `delete_function`, `rename_function` | Complete Blueprint programming with 23+ node types, variables with full property control, custom functions, and dynamic graph management. `connect_nodes` validates via the K2 schema and returns rich `error_details` (available nodes/pins, pin types, schema messages) on failure so agents can self-correct. |
 | **Blueprint Analysis** | `read_blueprint_content`, `analyze_blueprint_graph`, `get_blueprint_variable_details`, `get_blueprint_function_details` | Deep inspection of Blueprint structure, event graphs, execution flow, variables, and functions |
 | **Asset Discovery** | `search_assets`, `find_animation_assets`, `get_available_materials` | Generalized Asset Registry search by class + paths (animations, meshes, blueprints, textures, sounds, ...); `find_animation_assets` is a preset over common animation classes |
+| **Fab-Safe Asset Workflows** | `detect_fab_status`, `open_fab_browser`, `import_asset`, `bulk_import_assets`, `place_imported_asset`, `tag_imported_assets`, `move_asset`, `rename_asset`, `delete_asset`, `fix_redirectors`, `list_asset_dependencies`, `list_asset_references`, `generate_imported_asset_manifest` | Work with local files and already-licensed project content without automating Fab authentication, purchasing, or downloading |
+| **Animation System Integration** | `detect_gasp_assets`, `validate_motion_matching_setup`, `setup_gasp_character`, `retarget_to_gasp`, `detect_als_plugin`, `validate_als_character`, `setup_als_character`, `retarget_to_als` | Detect and validate GASP / ALS prerequisites, then guide safe dry-run setup and retargeting workflows |
 | **World Building** | `create_town`, `construct_house`, `construct_mansion`, `create_tower`, `create_arch`, `create_staircase` | Build complex architectural structures and entire settlements |
 | **Epic Structures** | `create_castle_fortress`, `create_suspension_bridge`, `create_aqueduct` | Massive engineering marvels and medieval fortresses |
 | **Level Design** | `create_maze`, `create_pyramid`, `create_wall` | Design challenging game levels and puzzles |
@@ -88,20 +90,17 @@ Check out these examples of the MCP server in action on our channel:
 
 ### 1. Setup Options
 
-**Option A: Use the Pre-Built Project (Recommended for Quick Start)**
+**Option A: Add Plugin to Your Existing Project**
 ```bash
 # Clone the repository
 git clone https://github.com/alex-wenner/unreal-engine-mcp.git
 cd unreal-engine-mcp
 
-# Open the pre-configured project
 # Copy or symlink UnrealMCP/ into your project's Plugins/ directory, then open your .uproject
-# or open it through Unreal Engine launcher
-
-# The plugin is already installed and enabled!
+# Enable the plugin in Unreal Editor and restart when prompted
 ```
 
-**Option B: Add Plugin to Your Existing Project**
+**Option B: Copy Plugin Manually**
 ```bash
 # Copy the plugin to your project
 cp -r UnrealMCP/ YourProject/Plugins/

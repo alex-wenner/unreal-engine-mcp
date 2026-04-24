@@ -12,6 +12,12 @@ class ToolManifestTests(unittest.TestCase):
         self.assertIn("spawn_actor", tools)
         self.assertIn("connect_nodes", tools)
         self.assertIn("disconnect_nodes", tools)
+        self.assertIn("detect_fab_status", tools)
+        self.assertIn("import_asset", tools)
+        self.assertIn("bulk_import_assets", tools)
+        self.assertIn("place_imported_asset", tools)
+        self.assertIn("detect_gasp_assets", tools)
+        self.assertIn("detect_als_plugin", tools)
 
 
 if __name__ == "__main__":

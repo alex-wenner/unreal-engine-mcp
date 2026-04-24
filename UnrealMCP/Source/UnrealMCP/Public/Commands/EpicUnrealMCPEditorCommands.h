@@ -28,4 +28,17 @@ private:
 
     // Generalized asset search (by class + paths) — built on FARFilter / FTopLevelAssetPath
     TSharedPtr<FJsonObject> HandleSearchAssets(const TSharedPtr<FJsonObject>& Params);
-}; 
+
+    // Fab-safe local import and asset-management commands
+    TSharedPtr<FJsonObject> HandleDetectUnrealPlugins(const TSharedPtr<FJsonObject>& Params);
+    TSharedPtr<FJsonObject> HandleOpenFabBrowser(const TSharedPtr<FJsonObject>& Params);
+    TSharedPtr<FJsonObject> HandleImportAsset(const TSharedPtr<FJsonObject>& Params);
+    TSharedPtr<FJsonObject> HandleBulkImportAssets(const TSharedPtr<FJsonObject>& Params);
+    TSharedPtr<FJsonObject> HandleCreateMaterialInstanceFromImport(const TSharedPtr<FJsonObject>& Params);
+    TSharedPtr<FJsonObject> HandlePlaceImportedAsset(const TSharedPtr<FJsonObject>& Params);
+    TSharedPtr<FJsonObject> HandleTagImportedAssets(const TSharedPtr<FJsonObject>& Params);
+    TSharedPtr<FJsonObject> HandleManageAsset(const TSharedPtr<FJsonObject>& Params);
+    TSharedPtr<FJsonObject> HandleFixRedirectors(const TSharedPtr<FJsonObject>& Params);
+    TSharedPtr<FJsonObject> HandleListAssetDependencies(const TSharedPtr<FJsonObject>& Params);
+    TSharedPtr<FJsonObject> HandleGenerateImportedAssetManifest(const TSharedPtr<FJsonObject>& Params);
+};

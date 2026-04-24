@@ -1,6 +1,6 @@
 # Unreal MCP Advanced Server
 
-A feature-rich Unreal MCP server that exposes **47 tools** across editor actor control, Blueprint authoring, graph inspection/editing, asset discovery, materials, physics, and advanced world generation.
+A feature-rich Unreal MCP server that exposes **70 tools** across editor actor control, Blueprint authoring, graph inspection/editing, asset discovery/import, materials, physics, animation-system validation, and advanced world generation.
 
 ## What's Included
 
@@ -32,6 +32,16 @@ This server contains tools for advanced level building and composition plus lowe
 - `create_arch(radius, segments, location, ...)` - Arch structures
 - `spawn_physics_blueprint_actor (name, mesh_path, location, mass, ...)` - Physics objects
 - `create_maze(rows, cols, cell_size, wall_height, location)` - Grid mazes
+
+### Fab-Safe Asset and Animation Workflows
+- `detect_fab_status()` / `open_fab_browser()` - Inspect/open Fab without automating auth, purchases, or downloads
+- `import_asset()` / `bulk_import_assets()` - Import already-downloaded local files into project content
+- `place_imported_asset()` / `tag_imported_assets()` - Use and organize imported StaticMesh, SkeletalMesh, or Actor Blueprint assets
+- `move_asset()` / `rename_asset()` / `delete_asset()` / `fix_redirectors()` - Manage project assets safely after import
+- `list_asset_dependencies()` / `list_asset_references()` / `generate_imported_asset_manifest()` - Inspect and summarize asset batches
+- `detect_gasp_assets()` / `validate_motion_matching_setup()` - Detect GASP/Pose Search/Motion Matching prerequisites
+- `detect_als_plugin()` / `validate_als_character()` - Detect ALS plugin/content prerequisites
+- `setup_gasp_character()`, `retarget_to_gasp()`, `setup_als_character()`, `retarget_to_als()` - Dry-run wizard entry points for setup/retargeting workflows
 
 ## Enhanced House Construction
 
@@ -67,7 +77,7 @@ construct_house(width=1500, depth=1200, house_style="mansion")
 
 ## Not Yet Included
 
-The server is designed to grow toward full editor parity. Current gaps include UMG/widget editing, viewport screenshots/camera control, Sequencer automation, project settings, and broad asset-management operations such as rename/move/reimport.
+The server is designed to grow toward full editor parity. Current gaps include UMG/widget editing, viewport screenshots/camera control, Sequencer automation, project settings, and fully automatic GASP/ALS Blueprint mutation or IK retarget execution.
 
 ## Usage
 
@@ -79,7 +89,7 @@ python unreal_mcp_server_advanced.py
 
 ## Benefits
 
-- **Feature-rich**: 47 tools covering composition, Blueprint graph work, materials, and asset discovery
+- **Feature-rich**: 70 tools covering composition, Blueprint graph work, materials, asset discovery/import, and animation workflow validation
 - **Focused**: Concentrates on editor automation for AI-assisted Unreal workflows
 - **Faster**: Reduced startup time and smaller tool list
 - **Maintainable**: Easier to understand and modify

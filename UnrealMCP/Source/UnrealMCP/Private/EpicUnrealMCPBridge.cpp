@@ -224,7 +224,18 @@ FString UEpicUnrealMCPBridge::ExecuteCommand(const FString& CommandType, const T
                      CommandType == TEXT("delete_actor") || 
                      CommandType == TEXT("set_actor_transform") ||
                      CommandType == TEXT("spawn_blueprint_actor") ||
-                     CommandType == TEXT("search_assets"))
+                     CommandType == TEXT("search_assets") ||
+                     CommandType == TEXT("detect_unreal_plugins") ||
+                     CommandType == TEXT("open_fab_browser") ||
+                     CommandType == TEXT("import_asset") ||
+                     CommandType == TEXT("bulk_import_assets") ||
+                     CommandType == TEXT("create_material_instance_from_import") ||
+                     CommandType == TEXT("place_imported_asset") ||
+                     CommandType == TEXT("tag_imported_assets") ||
+                     CommandType == TEXT("manage_asset") ||
+                     CommandType == TEXT("fix_redirectors") ||
+                     CommandType == TEXT("list_asset_dependencies") ||
+                     CommandType == TEXT("generate_imported_asset_manifest"))
             {
                 ResultJson = EditorCommands->HandleCommand(CommandType, Params);
             }

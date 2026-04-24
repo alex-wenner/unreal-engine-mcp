@@ -2998,6 +2998,292 @@ def find_animation_assets(
     )
 
 
+_FAB_PLUGIN_NAMES = ["Fab"]
+_GASP_PLUGIN_NAMES = ["PoseSearch", "MotionWarping", "Chooser", "IKRig"]
+_ALS_PLUGIN_NAMES = ["ALS", "AdvancedLocomotionSystem", "AdvancedLocomotionV4", "ALSCommunity"]
+_GASP_SEARCH_PATHS = ["/Game/", "/Game/GameAnimationSample/", "/Game/Characters/"]
+_ALS_SEARCH_PATHS = ["/Game/", "/Game/ALS/", "/Game/AdvancedLocomotionV4/"]
+
+
+def _send_editor_command(command: str, params: Dict[str, Any]) -> Dict[str, Any]:
+    unreal = get_unreal_connection()
+    if not unreal:
+        return {"success": False, "message": "Failed to connect to Unreal Engine"}
+    try:
+        response = unreal.send_command(command, params)
+        return response or {"success": False, "message": "No response from Unreal"}
+    except Exception as e:
+        logger.error(f"{command} error: {e}")
+        return {"success": False, "message": str(e)}
+
+
+@mcp.tool()
+def detect_unreal_plugins(plugin_names: List[str]) -> Dict[str, Any]:
+    """Detect whether named Unreal Engine plugins are installed/enabled."""
+    return _send_editor_command("detect_unreal_plugins", {"plugin_names": plugin_names})
+
+
+@mcp.tool()
+def detect_fab_status() -> Dict[str, Any]:
+    """Detect Fab plugin status without automating authentication, purchases, or downloads."""
+    response = detect_unreal_plugins(_FAB_PLUGIN_NAMES)
+    if response.get("success"):
+        response["fab_safe_workflow"] = [
+            "Use the editor Fab UI for authentication, licensing, purchase, and download.",
+            "Use MCP only for local imports and project content already available to Unreal.",
+        ]
+    return response
+
+
+@mcp.tool()
+def open_fab_browser() -> Dict[str, Any]:
+    """Open the Fab editor UI if the Fab plugin is already installed and enabled."""
+    return _send_editor_command("open_fab_browser", {})
+
+
+@mcp.tool()
+def import_asset(file_path: str, destination_path: str, replace_existing: bool = False, save: bool = True) -> Dict[str, Any]:
+    """Import one already-downloaded local asset file into a project content path."""
+    return _send_editor_command("import_asset", {
+        "file_path": file_path,
+        "destination_path": destination_path,
+        "replace_existing": replace_existing,
+        "save": save,
+    })
+
+
+@mcp.tool()
+def bulk_import_assets(
+    folder: str,
+    destination_path: str,
+    recursive: bool = True,
+    extensions: Optional[List[str]] = None,
+    replace_existing: bool = False,
+    save: bool = True,
+) -> Dict[str, Any]:
+    """Import supported local asset files from a folder into a project content path."""
+    params: Dict[str, Any] = {
+        "folder": folder,
+        "destination_path": destination_path,
+        "recursive": recursive,
+        "replace_existing": replace_existing,
+        "save": save,
+    }
+    if extensions is not None:
+        params["extensions"] = extensions
+    return _send_editor_command("bulk_import_assets", params)
+
+
+@mcp.tool()
+def create_material_instance_from_import(name: str, destination_path: str, parent_material: str, save: bool = True) -> Dict[str, Any]:
+    """Create a material instance from an existing parent material."""
+    return _send_editor_command("create_material_instance_from_import", {
+        "name": name,
+        "destination_path": destination_path,
+        "parent_material": parent_material,
+        "save": save,
+    })
+
+
+@mcp.tool()
+def place_imported_asset(
+    asset_path: str,
+    name: Optional[str] = None,
+    location: Optional[List[float]] = None,
+    rotation: Optional[List[float]] = None,
+    scale: Optional[List[float]] = None,
+) -> Dict[str, Any]:
+    """Place an imported StaticMesh, SkeletalMesh, or Actor Blueprint in the current level."""
+    params: Dict[str, Any] = {"asset_path": asset_path}
+    if name is not None:
+        params["name"] = name
+    if location is not None:
+        params["location"] = location
+    if rotation is not None:
+        params["rotation"] = rotation
+    if scale is not None:
+        params["scale"] = scale
+    return _send_editor_command("place_imported_asset", params)
+
+
+@mcp.tool()
+def tag_imported_assets(asset_paths: List[str], tags: Dict[str, str]) -> Dict[str, Any]:
+    """Set metadata tags on imported/project assets for later discovery and organization."""
+    return _send_editor_command("tag_imported_assets", {"asset_paths": asset_paths, "tags": tags})
+
+
+@mcp.tool()
+def move_asset(asset_path: str, destination_path: str) -> Dict[str, Any]:
+    """Move an asset to a new full object path."""
+    return _send_editor_command("manage_asset", {"action": "move", "asset_path": asset_path, "destination_path": destination_path})
+
+
+@mcp.tool()
+def rename_asset(asset_path: str, destination_path: str) -> Dict[str, Any]:
+    """Rename an asset by moving it to a new full object path."""
+    return _send_editor_command("manage_asset", {"action": "rename", "asset_path": asset_path, "destination_path": destination_path})
+
+
+@mcp.tool()
+def delete_asset(asset_path: str) -> Dict[str, Any]:
+    """Delete an asset from the project content folder."""
+    return _send_editor_command("manage_asset", {"action": "delete", "asset_path": asset_path})
+
+
+@mcp.tool()
+def fix_redirectors(paths: Optional[List[str]] = None) -> Dict[str, Any]:
+    """Fix redirectors under content paths after move/rename/delete operations."""
+    params: Dict[str, Any] = {}
+    if paths is not None:
+        params["paths"] = paths
+    return _send_editor_command("fix_redirectors", params)
+
+
+@mcp.tool()
+def list_asset_dependencies(asset_path: str) -> Dict[str, Any]:
+    """List package dependencies for an asset."""
+    return _send_editor_command("list_asset_dependencies", {"asset_path": asset_path, "referencers": False})
+
+
+@mcp.tool()
+def list_asset_references(asset_path: str) -> Dict[str, Any]:
+    """List packages that reference an asset."""
+    return _send_editor_command("list_asset_dependencies", {"asset_path": asset_path, "referencers": True})
+
+
+@mcp.tool()
+def generate_imported_asset_manifest(
+    paths: Optional[List[str]] = None,
+    class_names: Optional[List[str]] = None,
+    max_results: int = 1000,
+) -> Dict[str, Any]:
+    """Generate a manifest of project assets under content paths for imported/Fab-safe workflows."""
+    params: Dict[str, Any] = {"max_results": max_results}
+    if paths is not None:
+        params["paths"] = paths
+    if class_names is not None:
+        params["class_names"] = class_names
+    return _send_editor_command("generate_imported_asset_manifest", params)
+
+
+@mcp.tool()
+def detect_gasp_assets(paths: Optional[List[str]] = None, max_results: int = 2000) -> Dict[str, Any]:
+    """Detect Game Animation Sample Project-style content and required animation plugins."""
+    search_paths = paths or _GASP_SEARCH_PATHS
+    plugins = detect_unreal_plugins(_GASP_PLUGIN_NAMES)
+    assets = search_assets(
+        class_names=["AnimBlueprint", "SkeletalMesh", "Skeleton", "AnimSequence", "PoseSearchDatabase", "IKRigDefinition", "IKRetargeter"],
+        paths=search_paths,
+        max_results=max_results,
+    )
+    return {"success": bool(plugins.get("success") and assets.get("success", True)), "plugins": plugins.get("plugins", []), "assets": assets}
+
+
+@mcp.tool()
+def validate_motion_matching_setup(paths: Optional[List[str]] = None) -> Dict[str, Any]:
+    """Validate whether project content has the plugins/assets typically needed for GASP motion matching."""
+    detection = detect_gasp_assets(paths=paths)
+    plugins = {plugin.get("name"): plugin for plugin in detection.get("plugins", [])}
+    asset_items = detection.get("assets", {}).get("assets", [])
+    class_paths = [asset.get("class", "") for asset in asset_items]
+    issues = []
+    for required in ["PoseSearch", "MotionWarping"]:
+        if not plugins.get(required, {}).get("enabled"):
+            issues.append(f"Required plugin '{required}' is not enabled")
+    if not any("PoseSearchDatabase" in class_path for class_path in class_paths):
+        issues.append("No PoseSearchDatabase assets found")
+    if not any("AnimBlueprint" in class_path for class_path in class_paths):
+        issues.append("No animation blueprints found in searched paths")
+    return {"success": len(issues) == 0, "issues": issues, "detection": detection}
+
+
+@mcp.tool()
+def detect_als_plugin(paths: Optional[List[str]] = None, max_results: int = 2000) -> Dict[str, Any]:
+    """Detect ALS plugin variants and ALS-style Blueprint/content assets."""
+    search_paths = paths or _ALS_SEARCH_PATHS
+    plugins = detect_unreal_plugins(_ALS_PLUGIN_NAMES)
+    assets = search_assets(
+        class_names=["Blueprint", "AnimBlueprint", "SkeletalMesh", "Skeleton", "IKRigDefinition", "IKRetargeter"],
+        paths=search_paths,
+        max_results=max_results,
+    )
+    als_named_assets = [
+        asset for asset in assets.get("assets", [])
+        if "ALS" in asset.get("name", "").upper() or "LOCOMOTION" in asset.get("name", "").upper()
+    ]
+    return {"success": bool(plugins.get("success") and assets.get("success", True)), "plugins": plugins.get("plugins", []), "assets": assets, "als_named_assets": als_named_assets}
+
+
+@mcp.tool()
+def validate_als_character(character_blueprint_path: Optional[str] = None, skeleton_path: Optional[str] = None, paths: Optional[List[str]] = None) -> Dict[str, Any]:
+    """Validate that ALS content is available and optionally confirm character/skeleton assets exist."""
+    detection = detect_als_plugin(paths=paths)
+    issues = []
+    if not detection.get("als_named_assets"):
+        issues.append("No ALS/locomotion-named assets found in searched paths")
+    if character_blueprint_path and not any(asset.get("path") == character_blueprint_path for asset in detection.get("assets", {}).get("assets", [])):
+        issues.append(f"Character Blueprint not found: {character_blueprint_path}")
+    if skeleton_path and not any(asset.get("path") == skeleton_path for asset in detection.get("assets", {}).get("assets", [])):
+        issues.append(f"Skeleton not found: {skeleton_path}")
+    return {"success": len(issues) == 0, "issues": issues, "detection": detection}
+
+
+@mcp.tool()
+def setup_gasp_character(character_blueprint_path: str, dry_run: bool = True) -> Dict[str, Any]:
+    """Wizard entry point for GASP setup; currently validates and reports safe editor actions."""
+    validation = validate_motion_matching_setup()
+    actions = [
+        "Create or choose a child character Blueprint from the available GASP template.",
+        "Assign the character Blueprint as the default pawn/GameMode target.",
+        "Verify Enhanced Input mappings and compile affected Blueprints.",
+    ]
+    if not dry_run:
+        return {"success": False, "message": "Automatic GASP Blueprint mutation is not enabled yet; run with dry_run=True.", "validation": validation, "planned_actions": actions}
+    return {"success": validation.get("success", False), "dry_run": True, "character_blueprint_path": character_blueprint_path, "validation": validation, "planned_actions": actions}
+
+
+@mcp.tool()
+def retarget_to_gasp(source_skeletal_mesh: str, target_path: str, dry_run: bool = True) -> Dict[str, Any]:
+    """Wizard entry point for GASP retargeting; currently validates and reports IK Retargeter steps."""
+    validation = validate_motion_matching_setup()
+    actions = [
+        "Select or create an IK Rig for the source skeletal mesh.",
+        "Use a GASP-compatible IK Retargeter to duplicate animation assets into the target path.",
+        "Assign retargeted assets/databases to the target character animation Blueprint and compile.",
+    ]
+    if not dry_run:
+        return {"success": False, "message": "Automatic IK retarget execution is not enabled yet; run with dry_run=True.", "validation": validation, "planned_actions": actions}
+    return {"success": validation.get("success", False), "dry_run": True, "source_skeletal_mesh": source_skeletal_mesh, "target_path": target_path, "validation": validation, "planned_actions": actions}
+
+
+@mcp.tool()
+def setup_als_character(character_blueprint_path: str, dry_run: bool = True) -> Dict[str, Any]:
+    """Wizard entry point for ALS setup; currently validates and reports safe editor actions."""
+    validation = validate_als_character(character_blueprint_path=character_blueprint_path)
+    actions = [
+        "Create a child Blueprint from the detected ALS character base.",
+        "Assign the target skeletal mesh and ALS animation Blueprint.",
+        "Verify input/camera settings and compile affected Blueprints.",
+    ]
+    if not dry_run:
+        return {"success": False, "message": "Automatic ALS Blueprint mutation is not enabled yet; run with dry_run=True.", "validation": validation, "planned_actions": actions}
+    return {"success": validation.get("success", False), "dry_run": True, "character_blueprint_path": character_blueprint_path, "validation": validation, "planned_actions": actions}
+
+
+@mcp.tool()
+def retarget_to_als(source_skeletal_mesh: str, target_path: str, dry_run: bool = True) -> Dict[str, Any]:
+    """Wizard entry point for ALS retargeting; currently validates and reports IK Retargeter steps."""
+    validation = validate_als_character()
+    actions = [
+        "Create or choose IK Rig assets for source and ALS skeletons.",
+        "Use an ALS-compatible IK Retargeter to duplicate animation assets into the target path.",
+        "Assign retargeted animation Blueprint/assets to the ALS child character and compile.",
+    ]
+    if not dry_run:
+        return {"success": False, "message": "Automatic IK retarget execution is not enabled yet; run with dry_run=True.", "validation": validation, "planned_actions": actions}
+    return {"success": validation.get("success", False), "dry_run": True, "source_skeletal_mesh": source_skeletal_mesh, "target_path": target_path, "validation": validation, "planned_actions": actions}
+
+
 # Run the server
 
 
