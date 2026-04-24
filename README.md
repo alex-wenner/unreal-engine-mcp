@@ -3,10 +3,7 @@
 **Control Unreal Engine 5.5+ through AI with natural language** — This MCP server enables AI clients to build incredible 3D worlds and architectural masterpieces. Create entire towns, medieval castles, modern mansions, challenging mazes, and complex structures with AI-powered commands.
 
 [![Unreal Engine](https://img.shields.io/badge/Unreal%20Engine-5.5%2B-orange.svg)](https://www.unrealengine.com/)
-[![YouTube](https://img.shields.io/badge/YouTube-@flopperam-red.svg?logo=youtube)](https://youtube.com/@flopperam)
 [![Discord](https://img.shields.io/badge/Discord-Join%20Server-5865F2.svg?logo=discord&logoColor=white)](https://discord.gg/3KNkke3rnH)
-[![Twitter](https://img.shields.io/badge/X-@Flopperam-1DA1F2.svg?logo=x&logoColor=white)](https://twitter.com/Flopperam)
-[![TikTok](https://img.shields.io/badge/TikTok-@flopperam-000000.svg?logo=tiktok&logoColor=white)](https://tiktok.com/@flopperam)
 
 > **Active Development**: This MCP server is under active development with regular updates and improvements. Join our [Discord](https://discord.gg/3KNkke3rnH) to stay updated on the latest releases!
 
@@ -94,11 +91,11 @@ Check out these examples of the MCP server in action on our channel:
 **Option A: Use the Pre-Built Project (Recommended for Quick Start)**
 ```bash
 # Clone the repository
-git clone https://github.com/flopperam/unreal-engine-mcp.git
+git clone https://github.com/alex-wenner/unreal-engine-mcp.git
 cd unreal-engine-mcp
 
 # Open the pre-configured project
-# Double-click FlopperamUnrealMCP/FlopperamUnrealMCP.uproject
+# Copy or symlink UnrealMCP/ into your project's Plugins/ directory, then open your .uproject
 # or open it through Unreal Engine launcher
 
 # The plugin is already installed and enabled!
@@ -175,7 +172,7 @@ Run the Unreal Build Tool to compile the project:
 ```bash
 "/Users/Shared/Epic Games/UE_5.X/Engine/Build/BatchFiles/Mac/Build.sh" \
   UnrealEditor Mac Development \
-  -Project="/path/to/unreal-engine-mcp/FlopperamUnrealMCP/FlopperamUnrealMCP.uproject" \
+  -Project="/path/to/YourProject/YourProject.uproject" \
   -WaitMutex
 ```
 
@@ -185,7 +182,7 @@ Replace:
 
 ##### Step 4: Open the Project
 
-Once compilation succeeds, you can open `FlopperamUnrealMCP.uproject` in Unreal Engine.
+Once compilation succeeds, you can open your Unreal project in Unreal Engine.
 
 ### 2. Launch the MCP Server
 
@@ -240,7 +237,6 @@ Note that on Mac, and sometimes on Windows, you may have to replace the "uv" str
 
 - `Python/unreal_mcp_server_advanced.py` is the canonical MCP tool manifest; each exposed tool is decorated with `@mcp.tool()`.
 - `UnrealMCP/` is the standalone plugin source.
-- `FlopperamUnrealMCP/Plugins/UnrealMCP/` is the same plugin vendored into the sample project and should be kept in sync with `UnrealMCP/`.
 - Lightweight Python tests under `Python/tests/` validate response normalization, actor-name collision handling, and documented core tool exposure.
 
 ## Feature-Rich Agent Roadmap
@@ -286,10 +282,7 @@ graph TB
 **Join our community and get help building amazing worlds!**
 
 ### Connect With Us
-- **YouTube**: [youtube.com/@flopperam](https://youtube.com/@flopperam) - Tutorials, showcases, and development updates
 - **Discord**: [discord.gg/8yr1RBv](https://discord.gg/3KNkke3rnH) - Get help, share creations, and discuss the plugin
-- **Twitter/X**: [twitter.com/Flopperam](https://twitter.com/Flopperam) - Latest news and quick updates  
-- **TikTok**: [tiktok.com/@flopperam](https://tiktok.com/@flopperam) - Quick tips and amazing builds
 
 ### Get Help & Share
 - **Setup Issues?** Check our [Debugging & Troubleshooting Guide](DEBUGGING.md) first

@@ -461,7 +461,6 @@ Batch operations when possible to reduce round-trip time.
 - Join our [Discord](https://discord.gg/3KNkke3rnH) for community support
 
 ### Video Tutorials
-Check out [YouTube @flopperam](https://youtube.com/@flopperam) for video guides on Blueprint Graph programming with AI.
 
 ---
 
