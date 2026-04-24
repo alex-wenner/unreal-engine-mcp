@@ -21,6 +21,9 @@
 #include "Kismet2/KismetEditorUtilities.h"
 #include "Engine/SimpleConstructionScript.h"
 #include "Engine/SCS_Node.h"
+#include "EdGraph/EdGraph.h"
+#include "EdGraph/EdGraphNode.h"
+#include "EdGraph/EdGraphPin.h"
 #include "UObject/Field.h"
 #include "UObject/FieldPath.h"
 #include "EditorAssetLibrary.h"
@@ -100,6 +103,14 @@ TSharedPtr<FJsonObject> FEpicUnrealMCPBlueprintCommands::HandleCommand(const FSt
     else if (CommandType == TEXT("get_blueprint_function_details"))
     {
         return HandleGetBlueprintFunctionDetails(Params);
+    }
+    else if (CommandType == TEXT("audit_blueprint"))
+    {
+        return HandleAuditBlueprint(Params);
+    }
+    else if (CommandType == TEXT("organize_blueprint_graph"))
+    {
+        return HandleOrganizeBlueprintGraph(Params);
     }
 
     return FEpicUnrealMCPCommonUtils::CreateErrorResponse(FString::Printf(TEXT("Unknown blueprint command: %s"), *CommandType));
@@ -1639,5 +1650,238 @@ TSharedPtr<FJsonObject> FEpicUnrealMCPBlueprintCommands::HandleGetBlueprintFunct
     }
 
     ResultObj->SetBoolField(TEXT("success"), true);
+    return ResultObj;
+}
+
+namespace
+{
+    static UEdGraph* FindBlueprintGraphByName(UBlueprint* Blueprint, const FString& GraphName)
+    {
+        if (!Blueprint)
+        {
+            return nullptr;
+        }
+
+        for (UEdGraph* Graph : Blueprint->UbergraphPages)
+        {
+            if (Graph && Graph->GetName() == GraphName)
+            {
+                return Graph;
+            }
+        }
+
+        for (UEdGraph* Graph : Blueprint->FunctionGraphs)
+        {
+            if (Graph && Graph->GetName() == GraphName)
+            {
+                return Graph;
+            }
+        }
+
+        return nullptr;
+    }
+
+    static TSharedPtr<FJsonObject> BlueprintIssue(const FString& Severity, const FString& Message, const FString& Context)
+    {
+        TSharedPtr<FJsonObject> Issue = MakeShared<FJsonObject>();
+        Issue->SetStringField(TEXT("severity"), Severity);
+        Issue->SetStringField(TEXT("message"), Message);
+        Issue->SetStringField(TEXT("context"), Context);
+        return Issue;
+    }
+}
+
+TSharedPtr<FJsonObject> FEpicUnrealMCPBlueprintCommands::HandleAuditBlueprint(const TSharedPtr<FJsonObject>& Params)
+{
+    FString BlueprintPath;
+    if (!Params->TryGetStringField(TEXT("blueprint_path"), BlueprintPath))
+    {
+        return FEpicUnrealMCPCommonUtils::CreateErrorResponse(TEXT("Missing 'blueprint_path' parameter"));
+    }
+
+    UBlueprint* Blueprint = Cast<UBlueprint>(UEditorAssetLibrary::LoadAsset(BlueprintPath));
+    if (!Blueprint)
+    {
+        return FEpicUnrealMCPCommonUtils::CreateErrorResponse(FString::Printf(TEXT("Failed to load blueprint: %s"), *BlueprintPath));
+    }
+
+    TArray<TSharedPtr<FJsonValue>> Issues;
+    TArray<TSharedPtr<FJsonValue>> Graphs;
+    int32 TotalNodes = 0;
+    int32 DisconnectedNodes = 0;
+    int32 DenseGraphs = 0;
+
+    TArray<UEdGraph*> AllGraphs;
+    AllGraphs.Append(Blueprint->UbergraphPages);
+    AllGraphs.Append(Blueprint->FunctionGraphs);
+
+    for (UEdGraph* Graph : AllGraphs)
+    {
+        if (!Graph)
+        {
+            continue;
+        }
+
+        int32 GraphDisconnectedNodes = 0;
+        for (UEdGraphNode* Node : Graph->Nodes)
+        {
+            if (!Node)
+            {
+                continue;
+            }
+
+            ++TotalNodes;
+            bool bHasConnection = false;
+            for (const UEdGraphPin* Pin : Node->Pins)
+            {
+                if (Pin && Pin->LinkedTo.Num() > 0)
+                {
+                    bHasConnection = true;
+                    break;
+                }
+            }
+
+            if (!bHasConnection && !Node->IsA<UK2Node_Event>())
+            {
+                ++DisconnectedNodes;
+                ++GraphDisconnectedNodes;
+                Issues.Add(MakeShared<FJsonValueObject>(BlueprintIssue(
+                    TEXT("warning"),
+                    FString::Printf(TEXT("Node '%s' has no pin connections"), *Node->GetNodeTitle(ENodeTitleType::ListView).ToString()),
+                    Graph->GetName())));
+            }
+        }
+
+        if (Graph->Nodes.Num() > 40)
+        {
+            ++DenseGraphs;
+            Issues.Add(MakeShared<FJsonValueObject>(BlueprintIssue(
+                TEXT("info"),
+                FString::Printf(TEXT("Graph has %d nodes; consider splitting logic into functions or C++"), Graph->Nodes.Num()),
+                Graph->GetName())));
+        }
+
+        TSharedPtr<FJsonObject> GraphObj = MakeShared<FJsonObject>();
+        GraphObj->SetStringField(TEXT("name"), Graph->GetName());
+        GraphObj->SetNumberField(TEXT("node_count"), Graph->Nodes.Num());
+        GraphObj->SetNumberField(TEXT("disconnected_node_count"), GraphDisconnectedNodes);
+        Graphs.Add(MakeShared<FJsonValueObject>(GraphObj));
+    }
+
+    if (Blueprint->NewVariables.Num() > 20)
+    {
+        Issues.Add(MakeShared<FJsonValueObject>(BlueprintIssue(
+            TEXT("info"),
+            FString::Printf(TEXT("Blueprint has %d variables; consider grouping state into components or C++ structs"), Blueprint->NewVariables.Num()),
+            Blueprint->GetName())));
+    }
+
+    TSharedPtr<FJsonObject> ResultObj = MakeShared<FJsonObject>();
+    ResultObj->SetBoolField(TEXT("success"), true);
+    ResultObj->SetStringField(TEXT("blueprint_path"), BlueprintPath);
+    ResultObj->SetStringField(TEXT("blueprint_name"), Blueprint->GetName());
+    ResultObj->SetStringField(TEXT("parent_class"), Blueprint->ParentClass ? Blueprint->ParentClass->GetName() : TEXT("None"));
+    ResultObj->SetNumberField(TEXT("graph_count"), Graphs.Num());
+    ResultObj->SetNumberField(TEXT("total_node_count"), TotalNodes);
+    ResultObj->SetNumberField(TEXT("disconnected_node_count"), DisconnectedNodes);
+    ResultObj->SetNumberField(TEXT("dense_graph_count"), DenseGraphs);
+    ResultObj->SetNumberField(TEXT("variable_count"), Blueprint->NewVariables.Num());
+    ResultObj->SetArrayField(TEXT("graphs"), Graphs);
+    ResultObj->SetArrayField(TEXT("issues"), Issues);
+    ResultObj->SetStringField(TEXT("recommendation"), DisconnectedNodes > 0 || DenseGraphs > 0
+        ? TEXT("Run organize_blueprint_graph for layout, then consider moving dense gameplay systems to C++ class templates.")
+        : TEXT("Blueprint looks reasonably organized."));
+    return ResultObj;
+}
+
+TSharedPtr<FJsonObject> FEpicUnrealMCPBlueprintCommands::HandleOrganizeBlueprintGraph(const TSharedPtr<FJsonObject>& Params)
+{
+    FString BlueprintPath;
+    if (!Params->TryGetStringField(TEXT("blueprint_path"), BlueprintPath))
+    {
+        return FEpicUnrealMCPCommonUtils::CreateErrorResponse(TEXT("Missing 'blueprint_path' parameter"));
+    }
+
+    FString GraphName = TEXT("EventGraph");
+    Params->TryGetStringField(TEXT("graph_name"), GraphName);
+
+    bool bDryRun = true;
+    Params->TryGetBoolField(TEXT("dry_run"), bDryRun);
+
+    int32 Columns = 4;
+    if (Params->HasField(TEXT("columns")))
+    {
+        Columns = FMath::Max(1, Params->GetIntegerField(TEXT("columns")));
+    }
+
+    int32 XSpacing = 420;
+    int32 YSpacing = 220;
+    if (Params->HasField(TEXT("x_spacing"))) XSpacing = FMath::Max(100, Params->GetIntegerField(TEXT("x_spacing")));
+    if (Params->HasField(TEXT("y_spacing"))) YSpacing = FMath::Max(80, Params->GetIntegerField(TEXT("y_spacing")));
+
+    UBlueprint* Blueprint = Cast<UBlueprint>(UEditorAssetLibrary::LoadAsset(BlueprintPath));
+    if (!Blueprint)
+    {
+        return FEpicUnrealMCPCommonUtils::CreateErrorResponse(FString::Printf(TEXT("Failed to load blueprint: %s"), *BlueprintPath));
+    }
+
+    UEdGraph* Graph = FindBlueprintGraphByName(Blueprint, GraphName);
+    if (!Graph)
+    {
+        return FEpicUnrealMCPCommonUtils::CreateErrorResponse(FString::Printf(TEXT("Graph not found: %s"), *GraphName));
+    }
+
+    TArray<UEdGraphNode*> Nodes = Graph->Nodes;
+    Nodes.Sort([](const UEdGraphNode* A, const UEdGraphNode* B)
+    {
+        if (!A || !B)
+        {
+            return A != nullptr;
+        }
+        return A->NodePosY == B->NodePosY ? A->NodePosX < B->NodePosX : A->NodePosY < B->NodePosY;
+    });
+
+    TArray<TSharedPtr<FJsonValue>> PlannedPositions;
+    for (int32 Index = 0; Index < Nodes.Num(); ++Index)
+    {
+        UEdGraphNode* Node = Nodes[Index];
+        if (!Node)
+        {
+            continue;
+        }
+
+        const int32 NewX = (Index % Columns) * XSpacing;
+        const int32 NewY = (Index / Columns) * YSpacing;
+
+        TSharedPtr<FJsonObject> NodeObj = MakeShared<FJsonObject>();
+        NodeObj->SetStringField(TEXT("node_id"), Node->NodeGuid.ToString());
+        NodeObj->SetStringField(TEXT("title"), Node->GetNodeTitle(ENodeTitleType::ListView).ToString());
+        NodeObj->SetNumberField(TEXT("old_x"), Node->NodePosX);
+        NodeObj->SetNumberField(TEXT("old_y"), Node->NodePosY);
+        NodeObj->SetNumberField(TEXT("new_x"), NewX);
+        NodeObj->SetNumberField(TEXT("new_y"), NewY);
+        PlannedPositions.Add(MakeShared<FJsonValueObject>(NodeObj));
+
+        if (!bDryRun)
+        {
+            Node->Modify();
+            Node->NodePosX = NewX;
+            Node->NodePosY = NewY;
+        }
+    }
+
+    if (!bDryRun)
+    {
+        Graph->Modify();
+        FBlueprintEditorUtils::MarkBlueprintAsModified(Blueprint);
+    }
+
+    TSharedPtr<FJsonObject> ResultObj = MakeShared<FJsonObject>();
+    ResultObj->SetBoolField(TEXT("success"), true);
+    ResultObj->SetBoolField(TEXT("dry_run"), bDryRun);
+    ResultObj->SetStringField(TEXT("blueprint_path"), BlueprintPath);
+    ResultObj->SetStringField(TEXT("graph_name"), GraphName);
+    ResultObj->SetNumberField(TEXT("node_count"), PlannedPositions.Num());
+    ResultObj->SetArrayField(TEXT("planned_positions"), PlannedPositions);
     return ResultObj;
 }

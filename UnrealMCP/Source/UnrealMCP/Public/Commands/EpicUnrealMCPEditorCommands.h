@@ -41,4 +41,7 @@ private:
     TSharedPtr<FJsonObject> HandleFixRedirectors(const TSharedPtr<FJsonObject>& Params);
     TSharedPtr<FJsonObject> HandleListAssetDependencies(const TSharedPtr<FJsonObject>& Params);
     TSharedPtr<FJsonObject> HandleGenerateImportedAssetManifest(const TSharedPtr<FJsonObject>& Params);
+
+    // C++ source generation commands
+    TSharedPtr<FJsonObject> HandleCreateCppClass(const TSharedPtr<FJsonObject>& Params);
 };

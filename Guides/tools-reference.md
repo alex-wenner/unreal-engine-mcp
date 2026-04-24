@@ -190,6 +190,23 @@ Detect ALS plugin variants/content and validate candidate ALS character or skele
 ### setup_als_character / retarget_to_als
 Wizard-style dry-run tools that validate prerequisites and report safe setup/retargeting actions.
 
+## 🧹 Blueprint Cleanup and C++ Alternatives
+
+### audit_blueprint
+Inspect a Blueprint for maintainability issues such as disconnected nodes, dense graphs, and oversized variable sets.
+
+### organize_blueprint_graph
+Lay out a Blueprint graph in a predictable grid. Runs as a dry-run by default and can apply positions when requested.
+
+### create_cpp_class
+Generate safe Unreal C++ `.h` / `.cpp` class stubs for supported parent types: Actor, Character, Pawn, GameModeBase, PlayerController, ActorComponent, and UserWidget.
+
+### validate_superhero_game_stack
+Check common superhero-game prerequisites: Enhanced Input, GASP/Pose Search/Motion Warping, Gameplay Abilities, CommonUI, flight-related assets, menus, and customization assets.
+
+### scaffold_superhero_cpp_classes
+Preview or generate a starter C++ architecture for superhero projects: character, flight component, customization component, game mode, player controller, and menu widget.
+
 
 ## 🎨 Blueprint System
 

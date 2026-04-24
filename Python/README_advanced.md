@@ -1,6 +1,6 @@
 # Unreal MCP Advanced Server
 
-A feature-rich Unreal MCP server that exposes **70 tools** across editor actor control, Blueprint authoring, graph inspection/editing, asset discovery/import, materials, physics, animation-system validation, and advanced world generation.
+A feature-rich Unreal MCP server that exposes **75 tools** across editor actor control, Blueprint authoring, graph inspection/editing/cleanup, C++ class scaffolding, asset discovery/import, materials, physics, animation-system validation, and advanced world generation.
 
 ## What's Included
 
@@ -42,6 +42,13 @@ This server contains tools for advanced level building and composition plus lowe
 - `detect_gasp_assets()` / `validate_motion_matching_setup()` - Detect GASP/Pose Search/Motion Matching prerequisites
 - `detect_als_plugin()` / `validate_als_character()` - Detect ALS plugin/content prerequisites
 - `setup_gasp_character()`, `retarget_to_gasp()`, `setup_als_character()`, `retarget_to_als()` - Dry-run wizard entry points for setup/retargeting workflows
+
+### Blueprint Cleanup, C++ Alternatives, and Superhero Scaffolding
+- `audit_blueprint()` - Find disconnected nodes, dense graphs, and maintainability issues
+- `organize_blueprint_graph()` - Dry-run or apply predictable Blueprint graph layout
+- `create_cpp_class()` - Generate safe Unreal C++ stubs for supported gameplay/framework classes
+- `validate_superhero_game_stack()` - Check GASP movement, flight, menu, customization, and ability-system readiness
+- `scaffold_superhero_cpp_classes()` - Preview or generate starter C++ classes for a superhero game
 
 ## Enhanced House Construction
 
@@ -89,7 +96,7 @@ python unreal_mcp_server_advanced.py
 
 ## Benefits
 
-- **Feature-rich**: 70 tools covering composition, Blueprint graph work, materials, asset discovery/import, and animation workflow validation
+- **Feature-rich**: 75 tools covering composition, Blueprint graph work/cleanup, C++ scaffolding, materials, asset discovery/import, and animation workflow validation
 - **Focused**: Concentrates on editor automation for AI-assisted Unreal workflows
 - **Faster**: Reduced startup time and smaller tool list
 - **Maintainable**: Easier to understand and modify

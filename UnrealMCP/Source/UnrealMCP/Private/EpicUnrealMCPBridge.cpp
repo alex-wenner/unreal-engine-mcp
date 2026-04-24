@@ -235,7 +235,8 @@ FString UEpicUnrealMCPBridge::ExecuteCommand(const FString& CommandType, const T
                      CommandType == TEXT("manage_asset") ||
                      CommandType == TEXT("fix_redirectors") ||
                      CommandType == TEXT("list_asset_dependencies") ||
-                     CommandType == TEXT("generate_imported_asset_manifest"))
+                     CommandType == TEXT("generate_imported_asset_manifest") ||
+                     CommandType == TEXT("create_cpp_class"))
             {
                 ResultJson = EditorCommands->HandleCommand(CommandType, Params);
             }
@@ -250,11 +251,13 @@ FString UEpicUnrealMCPBridge::ExecuteCommand(const FString& CommandType, const T
                      CommandType == TEXT("apply_material_to_actor") ||
                      CommandType == TEXT("apply_material_to_blueprint") ||
                      CommandType == TEXT("get_actor_material_info") ||
-                     CommandType == TEXT("get_blueprint_material_info") ||
-                     CommandType == TEXT("read_blueprint_content") ||
-                     CommandType == TEXT("analyze_blueprint_graph") ||
-                     CommandType == TEXT("get_blueprint_variable_details") ||
-                     CommandType == TEXT("get_blueprint_function_details"))
+                      CommandType == TEXT("get_blueprint_material_info") ||
+                      CommandType == TEXT("read_blueprint_content") ||
+                      CommandType == TEXT("analyze_blueprint_graph") ||
+                      CommandType == TEXT("get_blueprint_variable_details") ||
+                      CommandType == TEXT("get_blueprint_function_details") ||
+                      CommandType == TEXT("audit_blueprint") ||
+                      CommandType == TEXT("organize_blueprint_graph"))
             {
                 ResultJson = BlueprintCommands->HandleCommand(CommandType, Params);
             }

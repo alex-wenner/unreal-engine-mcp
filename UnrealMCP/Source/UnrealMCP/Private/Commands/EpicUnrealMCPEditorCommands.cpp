@@ -38,6 +38,7 @@
 #include "Animation/SkeletalMeshActor.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "HAL/FileManager.h"
+#include "Misc/App.h"
 #include "Misc/PackageName.h"
 #include "Misc/Paths.h"
 #include "UObject/ObjectRedirector.h"
@@ -123,6 +124,10 @@ TSharedPtr<FJsonObject> FEpicUnrealMCPEditorCommands::HandleCommand(const FStrin
     else if (CommandType == TEXT("generate_imported_asset_manifest"))
     {
         return HandleGenerateImportedAssetManifest(Params);
+    }
+    else if (CommandType == TEXT("create_cpp_class"))
+    {
+        return HandleCreateCppClass(Params);
     }
     
     return FEpicUnrealMCPCommonUtils::CreateErrorResponse(FString::Printf(TEXT("Unknown editor command: %s"), *CommandType));
@@ -1188,5 +1193,186 @@ TSharedPtr<FJsonObject> FEpicUnrealMCPEditorCommands::HandleGenerateImportedAsse
     Result->SetNumberField(TEXT("count"), ReturnCount);
     Result->SetNumberField(TEXT("total_found"), AssetDataArray.Num());
     Result->SetBoolField(TEXT("truncated"), AssetDataArray.Num() > ReturnCount);
+    return Result;
+}
+
+namespace
+{
+    static bool IsSafeCppIdentifier(const FString& Value)
+    {
+        if (Value.IsEmpty() || !(FChar::IsAlpha(Value[0]) || Value[0] == TEXT('_')))
+        {
+            return false;
+        }
+
+        for (const TCHAR Char : Value)
+        {
+            if (!(FChar::IsAlnum(Char) || Char == TEXT('_')))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    struct FCppParentTemplate
+    {
+        FString ParentClass;
+        FString IncludePath;
+        FString BaseClass;
+        FString ConstructorBody;
+        TArray<FString> RequiredModules;
+    };
+
+    static bool ResolveCppParentTemplate(const FString& ParentClass, FCppParentTemplate& OutTemplate)
+    {
+        const FString Normalized = ParentClass.IsEmpty() ? TEXT("Actor") : ParentClass;
+        if (Normalized.Equals(TEXT("Actor"), ESearchCase::IgnoreCase) || Normalized.Equals(TEXT("AActor"), ESearchCase::IgnoreCase))
+        {
+            OutTemplate = { TEXT("Actor"), TEXT("GameFramework/Actor.h"), TEXT("AActor"), TEXT("PrimaryActorTick.bCanEverTick = true;"), {} };
+            return true;
+        }
+        if (Normalized.Equals(TEXT("Character"), ESearchCase::IgnoreCase) || Normalized.Equals(TEXT("ACharacter"), ESearchCase::IgnoreCase))
+        {
+            OutTemplate = { TEXT("Character"), TEXT("GameFramework/Character.h"), TEXT("ACharacter"), TEXT("PrimaryActorTick.bCanEverTick = true;"), {} };
+            return true;
+        }
+        if (Normalized.Equals(TEXT("Pawn"), ESearchCase::IgnoreCase) || Normalized.Equals(TEXT("APawn"), ESearchCase::IgnoreCase))
+        {
+            OutTemplate = { TEXT("Pawn"), TEXT("GameFramework/Pawn.h"), TEXT("APawn"), TEXT("PrimaryActorTick.bCanEverTick = true;"), {} };
+            return true;
+        }
+        if (Normalized.Equals(TEXT("GameModeBase"), ESearchCase::IgnoreCase) || Normalized.Equals(TEXT("AGameModeBase"), ESearchCase::IgnoreCase))
+        {
+            OutTemplate = { TEXT("GameModeBase"), TEXT("GameFramework/GameModeBase.h"), TEXT("AGameModeBase"), TEXT(""), {} };
+            return true;
+        }
+        if (Normalized.Equals(TEXT("PlayerController"), ESearchCase::IgnoreCase) || Normalized.Equals(TEXT("APlayerController"), ESearchCase::IgnoreCase))
+        {
+            OutTemplate = { TEXT("PlayerController"), TEXT("GameFramework/PlayerController.h"), TEXT("APlayerController"), TEXT(""), {} };
+            return true;
+        }
+        if (Normalized.Equals(TEXT("ActorComponent"), ESearchCase::IgnoreCase) || Normalized.Equals(TEXT("UActorComponent"), ESearchCase::IgnoreCase))
+        {
+            OutTemplate = { TEXT("ActorComponent"), TEXT("Components/ActorComponent.h"), TEXT("UActorComponent"), TEXT("PrimaryComponentTick.bCanEverTick = true;"), {} };
+            return true;
+        }
+        if (Normalized.Equals(TEXT("UserWidget"), ESearchCase::IgnoreCase) || Normalized.Equals(TEXT("UUserWidget"), ESearchCase::IgnoreCase))
+        {
+            OutTemplate = { TEXT("UserWidget"), TEXT("Blueprint/UserWidget.h"), TEXT("UUserWidget"), TEXT(""), { TEXT("UMG") } };
+            return true;
+        }
+        return false;
+    }
+}
+
+TSharedPtr<FJsonObject> FEpicUnrealMCPEditorCommands::HandleCreateCppClass(const TSharedPtr<FJsonObject>& Params)
+{
+    FString ClassName;
+    if (!Params->TryGetStringField(TEXT("class_name"), ClassName) || !IsSafeCppIdentifier(ClassName))
+    {
+        return FEpicUnrealMCPCommonUtils::CreateErrorResponse(TEXT("Missing or invalid 'class_name'. Use a C++ identifier only."));
+    }
+
+    FString ModuleName;
+    Params->TryGetStringField(TEXT("module_name"), ModuleName);
+    if (ModuleName.IsEmpty())
+    {
+        ModuleName = FApp::GetProjectName();
+    }
+    if (!IsSafeCppIdentifier(ModuleName))
+    {
+        return FEpicUnrealMCPCommonUtils::CreateErrorResponse(TEXT("Invalid 'module_name'. Use a C++ identifier only."));
+    }
+
+    FString ParentClass;
+    Params->TryGetStringField(TEXT("parent_class"), ParentClass);
+    FCppParentTemplate ParentTemplate;
+    if (!ResolveCppParentTemplate(ParentClass, ParentTemplate))
+    {
+        return FEpicUnrealMCPCommonUtils::CreateErrorResponse(TEXT("Unsupported parent_class. Supported: Actor, Character, Pawn, GameModeBase, PlayerController, ActorComponent, UserWidget."));
+    }
+
+    FString Subfolder;
+    Params->TryGetStringField(TEXT("subfolder"), Subfolder);
+    Subfolder = Subfolder.TrimStartAndEnd();
+    Subfolder.ReplaceInline(TEXT("\\"), TEXT("/"));
+    if (Subfolder.StartsWith(TEXT("/")))
+    {
+        Subfolder.RightChopInline(1);
+    }
+    if (Subfolder.Contains(TEXT("..")) || Subfolder.Contains(TEXT(":")))
+    {
+        return FEpicUnrealMCPCommonUtils::CreateErrorResponse(TEXT("Invalid 'subfolder'. Path traversal and absolute paths are not allowed."));
+    }
+
+    bool bDryRun = false;
+    Params->TryGetBoolField(TEXT("dry_run"), bDryRun);
+    bool bOverwrite = false;
+    Params->TryGetBoolField(TEXT("overwrite"), bOverwrite);
+
+    const FString ClassApi = ModuleName.ToUpper() + TEXT("_API");
+    const FString RelativeFolder = Subfolder.IsEmpty() ? FString() : Subfolder / FString();
+    const FString SourceDir = FPaths::ProjectSourceDir() / ModuleName / RelativeFolder;
+    const FString HeaderPath = SourceDir / (ClassName + TEXT(".h"));
+    const FString SourcePath = SourceDir / (ClassName + TEXT(".cpp"));
+
+    if (!bOverwrite && (FPaths::FileExists(HeaderPath) || FPaths::FileExists(SourcePath)))
+    {
+        return FEpicUnrealMCPCommonUtils::CreateErrorResponse(TEXT("C++ class files already exist. Pass overwrite=true to replace them."));
+    }
+
+    const FString HeaderContent = FString::Printf(
+        TEXT("#pragma once\n\n")
+        TEXT("#include \"CoreMinimal.h\"\n")
+        TEXT("#include \"%s\"\n")
+        TEXT("#include \"%s.generated.h\"\n\n")
+        TEXT("UCLASS(Blueprintable)\n")
+        TEXT("class %s %s : public %s\n")
+        TEXT("{\n")
+        TEXT("    GENERATED_BODY()\n\n")
+        TEXT("public:\n")
+        TEXT("    %s();\n")
+        TEXT("};\n"),
+        *ParentTemplate.IncludePath,
+        *ClassName,
+        *ClassApi,
+        *ClassName,
+        *ParentTemplate.BaseClass,
+        *ClassName);
+
+    const FString ConstructorBody = ParentTemplate.ConstructorBody.IsEmpty()
+        ? FString()
+        : FString::Printf(TEXT("\n    %s\n"), *ParentTemplate.ConstructorBody);
+
+    const FString SourceContent = FString::Printf(
+        TEXT("#include \"%s.h\"\n\n")
+        TEXT("%s::%s()\n")
+        TEXT("{%s}\n"),
+        *ClassName,
+        *ClassName,
+        *ClassName,
+        *ConstructorBody);
+
+    if (!bDryRun)
+    {
+        IFileManager::Get().MakeDirectory(*SourceDir, true);
+        if (!FFileHelper::SaveStringToFile(HeaderContent, *HeaderPath) ||
+            !FFileHelper::SaveStringToFile(SourceContent, *SourcePath))
+        {
+            return FEpicUnrealMCPCommonUtils::CreateErrorResponse(TEXT("Failed to write C++ class files."));
+        }
+    }
+
+    TSharedPtr<FJsonObject> Result = MakeShared<FJsonObject>();
+    Result->SetBoolField(TEXT("success"), true);
+    Result->SetBoolField(TEXT("dry_run"), bDryRun);
+    Result->SetStringField(TEXT("class_name"), ClassName);
+    Result->SetStringField(TEXT("module_name"), ModuleName);
+    Result->SetStringField(TEXT("parent_class"), ParentTemplate.ParentClass);
+    Result->SetStringField(TEXT("header_path"), HeaderPath);
+    Result->SetStringField(TEXT("source_path"), SourcePath);
+    Result->SetStringField(TEXT("next_step"), TEXT("Regenerate project files if needed, add any required modules to your Build.cs, then compile in Unreal or your IDE."));
+    SetStringArrayField(Result, TEXT("required_modules"), ParentTemplate.RequiredModules);
     return Result;
 }

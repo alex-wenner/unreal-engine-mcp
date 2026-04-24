@@ -18,6 +18,11 @@ class ToolManifestTests(unittest.TestCase):
         self.assertIn("place_imported_asset", tools)
         self.assertIn("detect_gasp_assets", tools)
         self.assertIn("detect_als_plugin", tools)
+        self.assertIn("audit_blueprint", tools)
+        self.assertIn("organize_blueprint_graph", tools)
+        self.assertIn("create_cpp_class", tools)
+        self.assertIn("validate_superhero_game_stack", tools)
+        self.assertIn("scaffold_superhero_cpp_classes", tools)
 
 
 if __name__ == "__main__":

@@ -3018,6 +3018,139 @@ def _send_editor_command(command: str, params: Dict[str, Any]) -> Dict[str, Any]
 
 
 @mcp.tool()
+def audit_blueprint(blueprint_path: str) -> Dict[str, Any]:
+    """Audit a Blueprint for organization issues such as disconnected nodes, dense graphs, and large variable sets."""
+    return _send_editor_command("audit_blueprint", {"blueprint_path": blueprint_path})
+
+
+@mcp.tool()
+def organize_blueprint_graph(
+    blueprint_path: str,
+    graph_name: str = "EventGraph",
+    dry_run: bool = True,
+    columns: int = 4,
+    x_spacing: int = 420,
+    y_spacing: int = 220,
+) -> Dict[str, Any]:
+    """Lay out a Blueprint graph in a readable grid; dry-run by default."""
+    return _send_editor_command("organize_blueprint_graph", {
+        "blueprint_path": blueprint_path,
+        "graph_name": graph_name,
+        "dry_run": dry_run,
+        "columns": columns,
+        "x_spacing": x_spacing,
+        "y_spacing": y_spacing,
+    })
+
+
+@mcp.tool()
+def create_cpp_class(
+    class_name: str,
+    parent_class: str = "Actor",
+    module_name: Optional[str] = None,
+    subfolder: Optional[str] = None,
+    dry_run: bool = False,
+    overwrite: bool = False,
+) -> Dict[str, Any]:
+    """Create safe Unreal C++ header/source files as an alternative to Blueprint implementation."""
+    params: Dict[str, Any] = {
+        "class_name": class_name,
+        "parent_class": parent_class,
+        "dry_run": dry_run,
+        "overwrite": overwrite,
+    }
+    if module_name:
+        params["module_name"] = module_name
+    if subfolder:
+        params["subfolder"] = subfolder
+    return _send_editor_command("create_cpp_class", params)
+
+
+@mcp.tool()
+def validate_superhero_game_stack(paths: Optional[List[str]] = None) -> Dict[str, Any]:
+    """Check for common systems needed by a superhero game: GASP movement, flight/C++ support, menus, and customization content."""
+    plugin_names = ["EnhancedInput", "PoseSearch", "MotionWarping", "GameplayAbilities", "CommonUI", "IKRig"]
+    plugins = detect_unreal_plugins(plugin_names)
+    search_paths = paths or ["/Game/"]
+    assets = search_assets(
+        class_names=["Blueprint", "AnimBlueprint", "SkeletalMesh", "Skeleton", "MaterialInterface", "DataAsset"],
+        paths=search_paths,
+        max_results=2000,
+    )
+    asset_items = assets.get("assets", [])
+    asset_names = " ".join(asset.get("name", "") for asset in asset_items).upper()
+    plugin_map = {plugin.get("name"): plugin for plugin in plugins.get("plugins", [])}
+    issues = []
+    recommendations = []
+    for required in ["EnhancedInput", "PoseSearch", "MotionWarping"]:
+        if not plugin_map.get(required, {}).get("enabled"):
+            issues.append(f"Plugin '{required}' is not enabled")
+    if "FLIGHT" not in asset_names:
+        recommendations.append("Add a flight movement component/class or Blueprint system")
+    if "MENU" not in asset_names and "WIDGET" not in asset_names:
+        recommendations.append("Add menu widgets or CommonUI screen assets")
+    if "CUSTOM" not in asset_names and "COSMETIC" not in asset_names:
+        recommendations.append("Add character customization data/assets")
+    return {
+        "success": len(issues) == 0,
+        "issues": issues,
+        "recommendations": recommendations,
+        "plugins": plugins,
+        "assets": assets,
+        "suggested_next_tools": [
+            "scaffold_superhero_cpp_classes",
+            "detect_gasp_assets",
+            "validate_motion_matching_setup",
+            "audit_blueprint",
+            "organize_blueprint_graph",
+        ],
+    }
+
+
+@mcp.tool()
+def scaffold_superhero_cpp_classes(
+    module_name: Optional[str] = None,
+    prefix: str = "Hero",
+    dry_run: bool = True,
+    overwrite: bool = False,
+) -> Dict[str, Any]:
+    """Generate or preview C++ class stubs for a superhero game architecture."""
+    class_specs = [
+        (f"{prefix}Character", "Character", "Characters"),
+        (f"{prefix}FlightComponent", "ActorComponent", "Abilities"),
+        (f"{prefix}CustomizationComponent", "ActorComponent", "Customization"),
+        (f"{prefix}GameMode", "GameModeBase", "Framework"),
+        (f"{prefix}PlayerController", "PlayerController", "Framework"),
+        (f"{prefix}MenuWidget", "UserWidget", "UI"),
+    ]
+    if dry_run:
+        return {
+            "success": True,
+            "dry_run": True,
+            "classes": [
+                {"class_name": class_name, "parent_class": parent_class, "subfolder": subfolder}
+                for class_name, parent_class, subfolder in class_specs
+            ],
+            "next_step": "Run with dry_run=False to write class files, then compile the Unreal project.",
+        }
+
+    results = []
+    success = True
+    for class_name, parent_class, subfolder in class_specs:
+        result = create_cpp_class(
+            class_name=class_name,
+            parent_class=parent_class,
+            module_name=module_name,
+            subfolder=subfolder,
+            dry_run=False,
+            overwrite=overwrite,
+        )
+        results.append(result)
+        success = success and bool(result.get("success"))
+    return {"success": success, "dry_run": False, "results": results}
+
+
+@mcp.tool()
 def detect_unreal_plugins(plugin_names: List[str]) -> Dict[str, Any]:
     """Detect whether named Unreal Engine plugins are installed/enabled."""
     return _send_editor_command("detect_unreal_plugins", {"plugin_names": plugin_names})
