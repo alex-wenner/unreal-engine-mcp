@@ -43,6 +43,8 @@ This server contains tools for advanced level building and composition plus lowe
 - `detect_als_plugin()` / `validate_als_character()` - Detect ALS plugin/content prerequisites
 - `setup_gasp_character()`, `retarget_to_gasp()`, `setup_als_character()`, `retarget_to_als()` - Dry-run wizard entry points for setup/retargeting workflows
 
+Pose Search, Motion Warping, IK Rig, ALS, and similar plugin-owned asset classes are detected only when the corresponding plugins are already available and enabled in the user's project or engine install.
+
 ### Blueprint Cleanup, C++ Alternatives, and Superhero Scaffolding
 - `audit_blueprint()` - Find disconnected nodes, dense graphs, and maintainability issues
 - `organize_blueprint_graph()` - Dry-run or apply predictable Blueprint graph layout

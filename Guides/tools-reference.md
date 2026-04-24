@@ -180,6 +180,7 @@ Inspect asset relationships and generate manifests for imported asset batches.
 
 ### detect_gasp_assets / validate_motion_matching_setup
 Detect Game Animation Sample Project-style content, Pose Search / Motion Matching prerequisites, and common validation issues.
+Pose Search and IK Rig asset classes only resolve when their optional Unreal plugins are installed and enabled; missing plugins are reported as validation issues rather than installed automatically.
 
 ### setup_gasp_character / retarget_to_gasp
 Wizard-style dry-run tools that validate prerequisites and report safe setup/retargeting actions.
