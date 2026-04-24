@@ -2898,9 +2898,487 @@ def find_animation_assets(
     )
 
 
-# Run the server
+# ============================================================================
+# Editor Escape-Hatch Tools — talk to ANY editor subsystem, including the
+# Unreal Editor "AI Assistant" plugin.
+#
+# These forward to matching command handlers added to the UnrealMCP plugin
+# (see UnrealMCP/Source/UnrealMCP/Private/Commands/EpicUnrealMCPEditorCommands.cpp).
+# ============================================================================
+
+@mcp.tool()
+def execute_console_command(command: str) -> Dict[str, Any]:
+    """Execute an Unreal Engine console command (like typing into the `~` console).
+
+    Captures and returns the output text. Useful for toggling stats, running
+    `py` commands, tweaking CVars, etc.
+
+    Args:
+        command: The console command to run (e.g. "stat fps", "r.ScreenPercentage 75").
+
+    Returns:
+        Dict with keys: success (bool), command, output (captured text),
+        warning (optional, when the command was not explicitly handled).
+    """
+    if not command or not isinstance(command, str):
+        return {"success": False, "message": "command must be a non-empty string"}
+    unreal = get_unreal_connection()
+    if not unreal:
+        return {"success": False, "message": "Failed to connect to Unreal Engine"}
+    try:
+        return unreal.send_command("execute_console_command", {"command": command}) or \
+            {"success": False, "message": "No response from Unreal"}
+    except Exception as e:
+        logger.error(f"execute_console_command error: {e}")
+        return {"success": False, "message": str(e)}
 
 
+@mcp.tool()
+def execute_editor_python(code: str) -> Dict[str, Any]:
+    """Execute Python code inside the Unreal Editor and return captured output.
+
+    Requires the "Python Editor Script Plugin" to be enabled. Full access to
+    the `unreal.*` module is available, so this is the escape hatch an agent
+    should use to reach any editor subsystem that is not wrapped by a
+    dedicated MCP tool — including the Unreal Editor AI Assistant plugin.
+
+    Example:
+        execute_editor_python(code='''
+        import unreal
+        for a in unreal.EditorLevelLibrary.get_all_level_actors():
+            print(a.get_actor_label())
+        ''')
+
+    Args:
+        code: Python source code to evaluate. Prefer using `print(...)` to
+              emit structured results; the call returns what was printed.
+
+    Returns:
+        Dict with keys: success (bool), output (captured stdout/log text),
+        warning (optional), hint (optional — e.g. if the `py` command is
+        unavailable).
+    """
+    if not code or not isinstance(code, str):
+        return {"success": False, "message": "code must be a non-empty string"}
+    unreal = get_unreal_connection()
+    if not unreal:
+        return {"success": False, "message": "Failed to connect to Unreal Engine"}
+    try:
+        return unreal.send_command("execute_editor_python", {"code": code}) or \
+            {"success": False, "message": "No response from Unreal"}
+    except Exception as e:
+        logger.error(f"execute_editor_python error: {e}")
+        return {"success": False, "message": str(e)}
+
+
+@mcp.tool()
+def list_editor_subsystems() -> Dict[str, Any]:
+    """List every loaded unreal.EditorSubsystem subclass.
+
+    Useful for discovering which AI Assistant / chat / Copilot style plugins
+    are available in the currently-running editor so you can drive them via
+    `ask_ai_assistant` or `execute_editor_python`.
+
+    Returns:
+        Dict with keys: success (bool), subsystems (List[str]).
+    """
+    unreal = get_unreal_connection()
+    if not unreal:
+        return {"success": False, "message": "Failed to connect to Unreal Engine"}
+    try:
+        return unreal.send_command("list_editor_subsystems", {}) or \
+            {"success": False, "message": "No response from Unreal"}
+    except Exception as e:
+        logger.error(f"list_editor_subsystems error: {e}")
+        return {"success": False, "message": str(e)}
+
+
+@mcp.tool()
+def ask_ai_assistant(
+    message: str,
+    subsystem: str = "",
+    method: str = "",
+) -> Dict[str, Any]:
+    """Send a chat message to an Unreal Editor AI Assistant plugin and return its reply.
+
+    Tries a set of well-known subsystem/method combinations (Epic's
+    `EditorAIAssistantSubsystem.send_chat_message`, community plugins such as
+    UE5AgentPython, etc.). If none match, pass `subsystem` and `method`
+    explicitly — call `list_editor_subsystems()` first to discover options.
+
+    Args:
+        message: The prompt/question to send to the AI Assistant.
+        subsystem: Optional explicit editor-subsystem class name
+                   (e.g. "EditorAIAssistantSubsystem").
+        method: Optional explicit method name
+                (e.g. "send_chat_message", "ask", "chat", "prompt").
+
+    Returns:
+        Dict with keys: success (bool), reply (str, when success), subsystem,
+        method, tried (List[Dict] — diagnostic trace of attempts),
+        error (str, when unsuccessful), raw_output (str).
+    """
+    if not message or not isinstance(message, str):
+        return {"success": False, "message": "message must be a non-empty string"}
+    unreal = get_unreal_connection()
+    if not unreal:
+        return {"success": False, "message": "Failed to connect to Unreal Engine"}
+    try:
+        return unreal.send_command(
+            "ask_ai_assistant",
+            {"message": message, "subsystem": subsystem, "method": method},
+        ) or {"success": False, "message": "No response from Unreal"}
+    except Exception as e:
+        logger.error(f"ask_ai_assistant error: {e}")
+        return {"success": False, "message": str(e)}
+
+
+# ============================================================================
+# MCP Resources — reference material and live editor state
+#
+# Resources give an MCP client read-only context it can attach to a
+# conversation. We expose:
+#   * Markdown guides from the Guides/ folder.
+#   * A generated overview and a schema/catalog.
+#   * Dynamic "live" resources that query the running editor on demand.
+# ============================================================================
+
+import os as _os
+from pathlib import Path as _Path
+
+_REPO_ROOT = _Path(__file__).resolve().parent.parent
+_GUIDES_DIR = _REPO_ROOT / "Guides"
+
+
+def _read_guide(filename: str) -> str:
+    """Read a markdown guide from the Guides/ folder with a friendly error."""
+    path = _GUIDES_DIR / filename
+    try:
+        return path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return f"# Guide not found\n\n`{path}` was not found on disk."
+    except Exception as e:  # pragma: no cover — defensive
+        return f"# Error loading guide\n\n{e}"
+
+
+@mcp.resource("unreal://guide/overview")
+def resource_overview() -> str:
+    """High-level overview of the UnrealMCP server, its tools and capabilities."""
+    return (
+        "# UnrealMCP Advanced — Overview\n\n"
+        "This MCP server drives Unreal Engine 5.5+ via a C++ editor plugin.\n"
+        "It exposes tools for:\n\n"
+        "- World building (towns, castles, mansions, mazes, bridges, aqueducts)\n"
+        "- Blueprint visual scripting (23+ node types, variables, functions)\n"
+        "- Asset discovery (search_assets, find_animation_assets)\n"
+        "- Physics, materials, and actor management\n"
+        "- **Editor escape hatches** (`execute_console_command`, "
+        "`execute_editor_python`, `ask_ai_assistant`, `list_editor_subsystems`)\n\n"
+        "The escape-hatch tools let an MCP client drive *any* editor subsystem,\n"
+        "including the Unreal Editor AI Assistant plugin. See the\n"
+        "`unreal://guide/ai-assistant` resource for details.\n\n"
+        "Attach the other `unreal://guide/*` resources for focused reference\n"
+        "material when planning complex tasks."
+    )
+
+
+@mcp.resource("unreal://guide/tools-reference")
+def resource_tools_reference() -> str:
+    """Full reference for every MCP tool shipped by this server."""
+    return _read_guide("tools-reference.md")
+
+
+@mcp.resource("unreal://guide/blueprint-graph")
+def resource_blueprint_guide() -> str:
+    """How to program Blueprint graphs (nodes, connections, variables, functions)."""
+    return _read_guide("blueprint-graph-guide.md")
+
+
+@mcp.resource("unreal://guide/prompt-examples")
+def resource_prompt_examples() -> str:
+    """Curated natural-language prompts that have been battle-tested against the tools."""
+    return _read_guide("prompt-examples.md")
+
+
+@mcp.resource("unreal://guide/colored-shapes-tutorial")
+def resource_colored_shapes_tutorial() -> str:
+    """Tutorial for the classic colored-shapes starter scene."""
+    return _read_guide("colored-shapes-tutorial.md")
+
+
+@mcp.resource("unreal://guide/ai-assistant")
+def resource_ai_assistant_guide() -> str:
+    """How to talk to the Unreal Editor AI Assistant plugin from an MCP client."""
+    return _read_guide("ai-assistant-integration.md")
+
+
+@mcp.resource("unreal://schema/coordinate-system")
+def resource_coordinate_system() -> str:
+    """Cheat-sheet for Unreal's coordinate system and units used by MCP tools."""
+    return (
+        "# Unreal Engine coordinate system (as used by this MCP server)\n\n"
+        "- **Units:** centimeters. A 1 m cube is `[100, 100, 100]`.\n"
+        "- **Axes (left-handed):** +X forward, +Y right, +Z up.\n"
+        "- **Rotation:** Euler `[pitch, yaw, roll]` in degrees.\n"
+        "  - Pitch = rotation around Y (look up/down)\n"
+        "  - Yaw   = rotation around Z (turn left/right)\n"
+        "  - Roll  = rotation around X (tilt)\n"
+        "- **Scale:** unitless multipliers. `[1, 1, 1]` is identity.\n"
+        "- **Ground plane:** Z = 0 is typical floor level.\n\n"
+        "All `location`, `rotation`, `scale` parameters on actor / building /\n"
+        "transform tools use these conventions.\n"
+    )
+
+
+@mcp.resource("unreal://schema/blueprint-node-types")
+def resource_blueprint_node_types() -> str:
+    """Catalog of Blueprint node types supported by `add_node` / `add_blueprint_node`."""
+    return (
+        "# Supported Blueprint node types\n\n"
+        "| Category   | Node types |\n"
+        "|------------|------------|\n"
+        "| Control Flow | Branch, Comparison, SwitchByte, SwitchEnum, SwitchInt, ExecutionSequence |\n"
+        "| Data       | VariableGet, VariableSet, MakeArray |\n"
+        "| Casting    | DynamicCast, ClassDynamicCast, CastByteToEnum |\n"
+        "| Utility    | Print, CallFunction, Select, SpawnActor |\n"
+        "| Specialized| Timeline, GetDataTableRow, AddComponentByClass, Self, Knot |\n"
+        "| Animation  | PlayAnimation, StopAnimation |\n\n"
+        "Use `connect_nodes` to wire pins — it returns rich `error_details`\n"
+        "including the available pins and their types when a connection fails\n"
+        "the K2 schema check, so an agent can self-correct.\n"
+    )
+
+
+@mcp.resource("unreal://schema/tool-categories")
+def resource_tool_categories() -> str:
+    """List of tool categories and the tools in each, formatted for quick planning."""
+    return (
+        "# Tool categories\n\n"
+        "## Actor management\n"
+        "- `get_actors_in_level`, `find_actors_by_name`, `delete_actor`, "
+        "`set_actor_transform`, `get_actor_material_info`\n\n"
+        "## World building\n"
+        "- `create_town`, `construct_house`, `construct_mansion`, "
+        "`create_tower`, `create_arch`, `create_staircase`\n"
+        "- `create_castle_fortress`, `create_suspension_bridge`, "
+        "`create_aqueduct`\n"
+        "- `create_maze`, `create_pyramid`, `create_wall`\n\n"
+        "## Blueprint system\n"
+        "- `create_blueprint`, `compile_blueprint`, "
+        "`add_component_to_blueprint`, `set_static_mesh_properties`\n"
+        "- `read_blueprint_content`, `analyze_blueprint_graph`, "
+        "`get_blueprint_variable_details`, `get_blueprint_function_details`\n\n"
+        "## Blueprint graph\n"
+        "- `add_node`, `connect_nodes`, `delete_node`, `set_node_property`\n"
+        "- `create_variable`, `set_blueprint_variable_properties`\n"
+        "- `create_function`, `add_function_input`, `add_function_output`, "
+        "`delete_function`, `rename_function`\n\n"
+        "## Physics & materials\n"
+        "- `spawn_physics_blueprint_actor`, `set_physics_properties`\n"
+        "- `apply_material_to_actor`, `apply_material_to_blueprint`, "
+        "`set_mesh_material_color`\n\n"
+        "## Asset discovery\n"
+        "- `search_assets`, `find_animation_assets`, `get_available_materials`\n\n"
+        "## Editor escape hatches (AI Assistant bridge)\n"
+        "- `execute_console_command`, `execute_editor_python`, "
+        "`ask_ai_assistant`, `list_editor_subsystems`\n"
+    )
+
+
+@mcp.resource("unreal://live/connection-status")
+def resource_connection_status() -> str:
+    """Live: is the MCP server currently able to reach the Unreal Editor plugin?"""
+    conn = get_unreal_connection()
+    try:
+        resp = conn.send_command("ping", {})
+        if resp and (resp.get("status") != "error"):
+            return (
+                "# Connection status: **OK**\n\n"
+                f"Unreal reachable at {UNREAL_HOST}:{UNREAL_PORT}.\n"
+                f"Ping response: `{json.dumps(resp)[:500]}`\n"
+            )
+        return (
+            "# Connection status: **ERROR**\n\n"
+            f"Ping returned: `{json.dumps(resp)[:500]}`\n\n"
+            "Is the Unreal Editor running with the UnrealMCP plugin enabled?\n"
+        )
+    except Exception as e:
+        return (
+            "# Connection status: **ERROR**\n\n"
+            f"Could not reach Unreal at {UNREAL_HOST}:{UNREAL_PORT}.\n\n"
+            f"Error: {e}\n\n"
+            "Start the Unreal Editor and make sure the UnrealMCP plugin is enabled.\n"
+        )
+
+
+@mcp.resource("unreal://live/actors")
+def resource_live_actors() -> str:
+    """Live: JSON list of actors in the current level (at most a concise summary)."""
+    conn = get_unreal_connection()
+    try:
+        resp = conn.send_command("get_actors_in_level", {}) or {}
+    except Exception as e:
+        return f"# Actors unavailable\n\nError: {e}\n"
+    return "# Actors in current level\n\n```json\n" + json.dumps(resp, indent=2)[:8000] + "\n```\n"
+
+
+@mcp.resource("unreal://live/editor-subsystems")
+def resource_live_subsystems() -> str:
+    """Live: loaded `unreal.EditorSubsystem` subclasses (useful for AI-Assistant discovery)."""
+    conn = get_unreal_connection()
+    try:
+        resp = conn.send_command("list_editor_subsystems", {}) or {}
+    except Exception as e:
+        return f"# Subsystems unavailable\n\nError: {e}\n"
+    subsystems = resp.get("subsystems") if isinstance(resp, dict) else None
+    if subsystems:
+        lines = ["# Loaded editor subsystems\n"]
+        lines.extend(f"- `{name}`" for name in subsystems)
+        return "\n".join(lines) + "\n"
+    return "# Subsystems\n\n```json\n" + json.dumps(resp, indent=2)[:4000] + "\n```\n"
+
+
+# ============================================================================
+# MCP Prompts — reusable, high-quality prompt templates
+#
+# Prompts surface in MCP clients (Claude Desktop, Cursor, etc.) as
+# slash-command-like entry points. They keep agents on-rails for the most
+# common tasks this server supports.
+# ============================================================================
+
+@mcp.prompt()
+def build_world(theme: str = "medieval", size: str = "medium") -> str:
+    """Plan and build a complete environment using the world-building tools."""
+    return (
+        f"You are driving the UnrealMCP server to build a **{theme}** world of **{size}** size.\n\n"
+        "Follow this plan:\n"
+        "1. Call `get_actors_in_level()` to understand the starting state.\n"
+        "2. Pick the right top-level tool: `create_town`, `create_castle_fortress`,\n"
+        "   `construct_mansion`, `create_maze`, `create_pyramid`, or `create_suspension_bridge`.\n"
+        "3. Configure parameters that match the theme (architectural_style,\n"
+        "   building_density, wall_height, etc.) — see `unreal://guide/tools-reference`.\n"
+        "4. Use `find_actors_by_name` to sanity-check what was created.\n"
+        "5. Adjust lighting/physics/materials with the material and physics tools\n"
+        "   if the scene looks bland.\n\n"
+        "Prefer one large composite call over many small ones; the composite\n"
+        "tools already parallelise internally. Report what you built at the end."
+    )
+
+
+@mcp.prompt()
+def create_blueprint_logic(feature: str = "health system") -> str:
+    """Guide an agent through implementing a Blueprint feature end-to-end."""
+    return (
+        f"Implement a **{feature}** inside a Blueprint using the UnrealMCP tools.\n\n"
+        "Steps:\n"
+        "1. `create_blueprint(name=..., parent_class='Actor')` (or the right parent).\n"
+        "2. `create_variable` for each piece of persistent state, with the\n"
+        "   correct type, default value, replication and exposure flags.\n"
+        "3. `add_node` for every execution node you need. Consult\n"
+        "   `unreal://schema/blueprint-node-types` for supported types.\n"
+        "4. `connect_nodes` to wire the graph. If a connection fails, read the\n"
+        "   `error_details` it returns — they tell you the available pins and\n"
+        "   their types so you can self-correct.\n"
+        "5. `compile_blueprint` to validate. Fix any errors and recompile.\n"
+        "6. Use `read_blueprint_content` + `analyze_blueprint_graph` to verify\n"
+        "   the final structure.\n\n"
+        "Aim for minimal nodes; lean on custom functions via `create_function`\n"
+        "when the graph starts to sprawl."
+    )
+
+
+@mcp.prompt()
+def debug_scene(symptom: str = "scene looks wrong") -> str:
+    """Diagnose an unexpected state in the current Unreal level."""
+    return (
+        f"Reported symptom: **{symptom}**.\n\n"
+        "Diagnose it with these steps:\n"
+        "1. Read `unreal://live/connection-status` — verify the editor is reachable.\n"
+        "2. `get_actors_in_level()` — get the current inventory.\n"
+        "3. `find_actors_by_name` for anything suspicious from the symptom.\n"
+        "4. For each suspect actor, call `get_actor_material_info` and check its\n"
+        "   transform with a targeted `set_actor_transform` dry-run (don't mutate\n"
+        "   until you're certain).\n"
+        "5. If logic-related, `read_blueprint_content` on the owning Blueprint\n"
+        "   and `analyze_blueprint_graph` to trace execution.\n"
+        "6. Use `execute_console_command('stat unit')` or `('stat fps')` for perf\n"
+        "   symptoms.\n\n"
+        "Report root cause + a minimal fix plan before making any changes."
+    )
+
+
+@mcp.prompt()
+def chat_with_ai_assistant(question: str = "") -> str:
+    """Forward a question to the Unreal Editor AI Assistant plugin."""
+    q = question.strip() or "(ask the AI Assistant something relevant to the user's request)"
+    return (
+        "Talk to the Unreal Editor AI Assistant plugin using this MCP server.\n\n"
+        "1. First call `list_editor_subsystems()` so you know what's loaded.\n"
+        "2. Then call `ask_ai_assistant(message=...)`. If the first attempt\n"
+        "   returns `success=false`, inspect the `tried` field, then call\n"
+        "   `ask_ai_assistant` again with explicit `subsystem` and `method`\n"
+        "   arguments.\n"
+        "3. If no AI-Assistant-style subsystem is present, fall back to\n"
+        "   `execute_editor_python` and drive the specific plugin's API directly.\n\n"
+        f"Question to forward: **{q}**\n\n"
+        "Return the AI Assistant's reply verbatim, plus a one-line summary."
+    )
+
+
+@mcp.prompt()
+def design_level(goal: str = "a small playable level") -> str:
+    """Plan a level from a high-level goal, then build it."""
+    return (
+        f"Design and build **{goal}** in the current Unreal level.\n\n"
+        "Phase 1 — Plan (no mutations):\n"
+        "  * Summarise the goal in 2–3 sentences.\n"
+        "  * Pick the set of MCP building tools you will use.\n"
+        "  * Sketch a rough layout with coordinates in centimeters (see\n"
+        "    `unreal://schema/coordinate-system`).\n\n"
+        "Phase 2 — Build:\n"
+        "  * Execute the tools in order. Prefer composite tools over many\n"
+        "    individual spawns.\n"
+        "  * After each major step, call `get_actors_in_level` to verify.\n\n"
+        "Phase 3 — Polish:\n"
+        "  * Apply materials with `apply_material_to_actor`.\n"
+        "  * Add physics via `set_physics_properties` where it makes sense.\n"
+        "  * Place player start / lighting if missing.\n"
+    )
+
+
+@mcp.prompt()
+def physics_simulation(scenario: str = "stack of toppling boxes") -> str:
+    """Set up a physics demo in the editor."""
+    return (
+        f"Build this physics demo: **{scenario}**.\n\n"
+        "1. Use `spawn_physics_blueprint_actor` for each dynamic body.\n"
+        "2. Call `set_physics_properties` to tune mass, damping, and whether\n"
+        "   simulation starts on BeginPlay.\n"
+        "3. Apply materials with `apply_material_to_actor` so the bodies are\n"
+        "   visually distinct.\n"
+        "4. Verify with `get_actors_in_level`.\n\n"
+        "Keep object counts modest (< 50) to avoid editor hitches."
+    )
+
+
+@mcp.prompt()
+def analyze_blueprint(blueprint_name: str = "") -> str:
+    """Deeply inspect a Blueprint and report its structure and risks."""
+    bp = blueprint_name or "<the Blueprint of interest>"
+    return (
+        f"Analyse Blueprint **{bp}** and produce a review.\n\n"
+        "1. `read_blueprint_content(name=...)` — dump the full content.\n"
+        "2. `analyze_blueprint_graph` — trace execution flow.\n"
+        "3. `get_blueprint_variable_details` / `get_blueprint_function_details`\n"
+        "   for each variable and function.\n"
+        "4. Compare against the node-type catalog at\n"
+        "   `unreal://schema/blueprint-node-types`.\n\n"
+        "Report:\n"
+        "  * Purpose of the Blueprint.\n"
+        "  * Public API (events, functions, exposed variables).\n"
+        "  * Any dead nodes, missing connections, or replication mistakes.\n"
+        "  * Concrete improvement suggestions."
+    )
 
 
 # Run the server

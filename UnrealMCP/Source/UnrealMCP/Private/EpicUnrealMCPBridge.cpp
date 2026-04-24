@@ -224,7 +224,11 @@ FString UEpicUnrealMCPBridge::ExecuteCommand(const FString& CommandType, const T
                      CommandType == TEXT("delete_actor") || 
                      CommandType == TEXT("set_actor_transform") ||
                      CommandType == TEXT("spawn_blueprint_actor") ||
-                     CommandType == TEXT("search_assets"))
+                     CommandType == TEXT("search_assets") ||
+                     CommandType == TEXT("execute_console_command") ||
+                     CommandType == TEXT("execute_editor_python") ||
+                     CommandType == TEXT("ask_ai_assistant") ||
+                     CommandType == TEXT("list_editor_subsystems"))
             {
                 ResultJson = EditorCommands->HandleCommand(CommandType, Params);
             }

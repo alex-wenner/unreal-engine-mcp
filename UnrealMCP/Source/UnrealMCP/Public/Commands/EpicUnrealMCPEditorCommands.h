@@ -28,4 +28,11 @@ private:
 
     // Generalized asset search (by class + paths) — built on FARFilter / FTopLevelAssetPath
     TSharedPtr<FJsonObject> HandleSearchAssets(const TSharedPtr<FJsonObject>& Params);
+
+    // Escape-hatch commands used to reach arbitrary editor functionality, including
+    // the Unreal Editor "AI Assistant" plugin subsystem from an MCP client.
+    TSharedPtr<FJsonObject> HandleExecuteConsoleCommand(const TSharedPtr<FJsonObject>& Params);
+    TSharedPtr<FJsonObject> HandleExecuteEditorPython(const TSharedPtr<FJsonObject>& Params);
+    TSharedPtr<FJsonObject> HandleAskAIAssistant(const TSharedPtr<FJsonObject>& Params);
+    TSharedPtr<FJsonObject> HandleListEditorSubsystems(const TSharedPtr<FJsonObject>& Params);
 }; 

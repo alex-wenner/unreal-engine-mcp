@@ -79,6 +79,40 @@ Check out these examples of the MCP server in action on our channel:
 | **Physics & Materials** | `spawn_physics_blueprint_actor`, `set_physics_properties`, `apply_material_to_actor`, `apply_material_to_blueprint`, `set_mesh_material_color` | Create realistic physics simulations and material systems |
 | **Blueprint System** | `create_blueprint`, `compile_blueprint`, `add_component_to_blueprint`, `set_static_mesh_properties` | Visual scripting and custom actor creation |
 | **Actor Management** | `get_actors_in_level`, `find_actors_by_name`, `delete_actor`, `set_actor_transform`, `get_actor_material_info` | Precise control over scene objects and inspection |
+| **Editor Escape Hatches (AI Assistant Bridge)** | `execute_console_command`, `execute_editor_python`, `ask_ai_assistant`, `list_editor_subsystems` | Drive *any* editor subsystem — including Epic's `EditorAIAssistantSubsystem` and community LLM plugins like UE5AgentPython. See the [AI Assistant Integration Guide](Guides/ai-assistant-integration.md). |
+
+### MCP Resources
+
+The server exposes a rich set of MCP **resources** that an AI client can attach to its context:
+
+| Resource URI | Type | Description |
+|--------------|------|-------------|
+| `unreal://guide/overview` | static | One-paragraph tour of the server |
+| `unreal://guide/tools-reference` | static | Full per-tool reference (from `Guides/`) |
+| `unreal://guide/blueprint-graph` | static | Deep-dive on the Blueprint graph tools |
+| `unreal://guide/prompt-examples` | static | Battle-tested natural-language prompts |
+| `unreal://guide/colored-shapes-tutorial` | static | Beginner-friendly walkthrough |
+| `unreal://guide/ai-assistant` | static | How to talk to the Unreal Editor AI Assistant plugin |
+| `unreal://schema/coordinate-system` | static | Coordinate / units cheat sheet |
+| `unreal://schema/blueprint-node-types` | static | Catalog of supported Blueprint nodes |
+| `unreal://schema/tool-categories` | static | Tools grouped by category, handy for planning |
+| `unreal://live/connection-status` | dynamic | Ping the editor and report health |
+| `unreal://live/actors` | dynamic | JSON snapshot of actors in the current level |
+| `unreal://live/editor-subsystems` | dynamic | Loaded `EditorSubsystem` subclasses — useful for AI-Assistant discovery |
+
+### MCP Prompts
+
+Ready-made prompt templates surface as slash-command-like entry points in MCP clients:
+
+| Prompt | Purpose |
+|--------|---------|
+| `build_world` | Plan and build a complete themed environment |
+| `create_blueprint_logic` | Implement a Blueprint feature end-to-end |
+| `debug_scene` | Diagnose unexpected state in the current level |
+| `chat_with_ai_assistant` | Forward a question to the Unreal Editor AI Assistant plugin |
+| `design_level` | Plan → build → polish a playable level |
+| `physics_simulation` | Set up a physics demo |
+| `analyze_blueprint` | Deep review of an existing Blueprint |
 
 ---
 

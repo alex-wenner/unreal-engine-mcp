@@ -26,6 +26,10 @@
 #include "AssetRegistry/ARFilter.h"
 #include "UObject/TopLevelAssetPath.h"
 #include "Commands/EpicUnrealMCPBlueprintCommands.h"
+#include "Misc/OutputDevice.h"
+#include "Misc/Base64.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
 
 FEpicUnrealMCPEditorCommands::FEpicUnrealMCPEditorCommands()
 {
@@ -63,6 +67,23 @@ TSharedPtr<FJsonObject> FEpicUnrealMCPEditorCommands::HandleCommand(const FStrin
     else if (CommandType == TEXT("search_assets"))
     {
         return HandleSearchAssets(Params);
+    }
+    // Escape-hatch / AI Assistant bridge commands
+    else if (CommandType == TEXT("execute_console_command"))
+    {
+        return HandleExecuteConsoleCommand(Params);
+    }
+    else if (CommandType == TEXT("execute_editor_python"))
+    {
+        return HandleExecuteEditorPython(Params);
+    }
+    else if (CommandType == TEXT("ask_ai_assistant"))
+    {
+        return HandleAskAIAssistant(Params);
+    }
+    else if (CommandType == TEXT("list_editor_subsystems"))
+    {
+        return HandleListEditorSubsystems(Params);
     }
     
     return FEpicUnrealMCPCommonUtils::CreateErrorResponse(FString::Printf(TEXT("Unknown editor command: %s"), *CommandType));
@@ -563,5 +584,323 @@ TSharedPtr<FJsonObject> FEpicUnrealMCPEditorCommands::HandleSearchAssets(const T
         Result->SetArrayField(TEXT("unresolved_class_names"), UnresolvedJson);
     }
 
+    return Result;
+}
+
+
+// ============================================================================
+// Escape-hatch commands: console, editor Python, and AI Assistant bridge
+// ============================================================================
+//
+// These commands are intentionally generic so that MCP clients can reach
+// anything the Unreal Editor exposes — including first- and third-party
+// "AI Assistant" style plugins (e.g. EditorAIAssistantSubsystem and similar
+// community plugins). Rather than hard-coding a specific plugin's API, we
+// expose:
+//
+//   * execute_console_command : run any Unreal console command via GEditor->Exec
+//   * execute_editor_python   : run Python in-editor by routing through the
+//                               built-in `py` console command (requires the
+//                               "Python Editor Script Plugin" to be enabled)
+//   * ask_ai_assistant        : convenience wrapper that builds a small Python
+//                               snippet which discovers an AI-Assistant style
+//                               editor subsystem, sends it a message, and
+//                               returns the subsystem's response string
+//   * list_editor_subsystems  : discovery helper that lists loaded editor
+//                               subsystems so an agent can find the right one
+//
+// Output from console commands is captured through a small FOutputDevice
+// shim so we can send it back in the JSON response.
+
+class FMCPStringOutputDevice : public FOutputDevice
+{
+public:
+    FString Output;
+
+    virtual void Serialize(const TCHAR* V, ELogVerbosity::Type Verbosity, const class FName& Category) override
+    {
+        Output.Append(V);
+        Output.AppendChar(TEXT('\n'));
+    }
+
+    virtual bool CanBeUsedOnAnyThread() const override { return true; }
+    virtual bool CanBeUsedOnMultipleThreads() const override { return true; }
+};
+
+static bool MCP_RunExecCommand(const FString& Command, FString& OutCapturedText, FString& OutError)
+{
+    FMCPStringOutputDevice Ar;
+
+    UWorld* World = nullptr;
+#if WITH_EDITOR
+    if (GEditor)
+    {
+        World = GEditor->GetEditorWorldContext().World();
+    }
+#endif
+    if (!World)
+    {
+        World = GWorld;
+    }
+
+    bool bHandled = false;
+#if WITH_EDITOR
+    if (GEditor)
+    {
+        bHandled = GEditor->Exec(World, *Command, Ar);
+    }
+    else
+#endif
+    if (GEngine)
+    {
+        bHandled = GEngine->Exec(World, *Command, Ar);
+    }
+    else
+    {
+        OutError = TEXT("No GEditor/GEngine available to execute console command");
+        return false;
+    }
+
+    OutCapturedText = Ar.Output;
+    if (!bHandled)
+    {
+        // Not fatal — some commands are handled by CVars and return false.
+        OutError = TEXT("Command was not explicitly handled (this is usually fine for CVars).");
+    }
+    return true;
+}
+
+// Wrap an arbitrary (possibly multi-line) Python snippet in a single-line
+// `py` console command. Some engine versions split multi-line Exec strings at
+// the first newline, so we base64-encode the source and exec() it from a
+// one-liner bootstrap. This is much more robust across UE versions.
+static FString MCP_WrapPythonAsSingleLineExec(const FString& PythonSource)
+{
+    const FString Encoded = FBase64::Encode(PythonSource);
+    return FString::Printf(
+        TEXT("py import base64 as _b64; exec(compile(_b64.b64decode('%s').decode('utf-8'), '<mcp>', 'exec'))"),
+        *Encoded);
+}
+
+TSharedPtr<FJsonObject> FEpicUnrealMCPEditorCommands::HandleExecuteConsoleCommand(const TSharedPtr<FJsonObject>& Params)
+{
+    FString Command;
+    if (!Params.IsValid() || !Params->TryGetStringField(TEXT("command"), Command) || Command.IsEmpty())
+    {
+        return FEpicUnrealMCPCommonUtils::CreateErrorResponse(TEXT("Missing required string parameter 'command'"));
+    }
+
+    FString Captured;
+    FString Warning;
+    if (!MCP_RunExecCommand(Command, Captured, Warning))
+    {
+        return FEpicUnrealMCPCommonUtils::CreateErrorResponse(Warning);
+    }
+
+    TSharedPtr<FJsonObject> Result = MakeShared<FJsonObject>();
+    Result->SetBoolField(TEXT("success"), true);
+    Result->SetStringField(TEXT("command"), Command);
+    Result->SetStringField(TEXT("output"), Captured);
+    if (!Warning.IsEmpty())
+    {
+        Result->SetStringField(TEXT("warning"), Warning);
+    }
+    return Result;
+}
+
+TSharedPtr<FJsonObject> FEpicUnrealMCPEditorCommands::HandleExecuteEditorPython(const TSharedPtr<FJsonObject>& Params)
+{
+    FString Code;
+    if (!Params.IsValid() || !Params->TryGetStringField(TEXT("code"), Code) || Code.IsEmpty())
+    {
+        return FEpicUnrealMCPCommonUtils::CreateErrorResponse(TEXT("Missing required string parameter 'code' (Python source to execute)"));
+    }
+
+    // Route through the Unreal "py" console command so we don't have to take a
+    // direct dependency on the PythonScriptPlugin module. This works whenever
+    // the "Python Editor Script Plugin" is enabled in the project (which is
+    // the default for this repo's FlopperamUnrealMCP project).
+    //
+    // We base64-wrap the code into a single-line `py` bootstrap so that
+    // multi-line / special-character user code survives the `FExec` pipeline
+    // unchanged on every supported engine version.
+    const FString Command = MCP_WrapPythonAsSingleLineExec(Code);
+
+    FString Captured;
+    FString Warning;
+    if (!MCP_RunExecCommand(Command, Captured, Warning))
+    {
+        return FEpicUnrealMCPCommonUtils::CreateErrorResponse(Warning);
+    }
+
+    TSharedPtr<FJsonObject> Result = MakeShared<FJsonObject>();
+    Result->SetBoolField(TEXT("success"), true);
+    Result->SetStringField(TEXT("output"), Captured);
+    if (!Warning.IsEmpty())
+    {
+        Result->SetStringField(TEXT("warning"), Warning);
+    }
+    // Make the hint obvious if the plugin isn't enabled.
+    if (Captured.Contains(TEXT("Command not recognized")) ||
+        Captured.Contains(TEXT("Unknown command")))
+    {
+        Result->SetStringField(TEXT("hint"),
+            TEXT("The 'py' console command was not recognized. Enable the 'Python Editor Script Plugin' in Edit > Plugins and restart the editor."));
+    }
+    return Result;
+}
+
+TSharedPtr<FJsonObject> FEpicUnrealMCPEditorCommands::HandleAskAIAssistant(const TSharedPtr<FJsonObject>& Params)
+{
+    FString Message;
+    if (!Params.IsValid() || !Params->TryGetStringField(TEXT("message"), Message) || Message.IsEmpty())
+    {
+        return FEpicUnrealMCPCommonUtils::CreateErrorResponse(TEXT("Missing required string parameter 'message'"));
+    }
+
+    FString SubsystemHint;
+    Params->TryGetStringField(TEXT("subsystem"), SubsystemHint);
+    FString MethodHint;
+    Params->TryGetStringField(TEXT("method"), MethodHint);
+
+    // Base64-encode free-form strings so we never have to worry about escaping
+    // quotes, backslashes, or newlines across the C++ → console → Python boundary.
+    const FString MessageB64   = FBase64::Encode(Message);
+    const FString SubsystemB64 = FBase64::Encode(SubsystemHint);
+    const FString MethodB64    = FBase64::Encode(MethodHint);
+
+    // This Python snippet tries a number of well-known subsystem/method names
+    // used by Epic's AI Assistant plugin and by popular community plugins
+    // (e.g. UE5AgentPython). It returns a JSON-safe payload so the MCP client
+    // can parse a structured response.
+    const FString Py = FString::Printf(TEXT(
+        "import unreal, json, base64\n"
+        "msg = base64.b64decode('%s').decode('utf-8')\n"
+        "user_subsystem = base64.b64decode('%s').decode('utf-8')\n"
+        "user_method = base64.b64decode('%s').decode('utf-8')\n"
+        "candidate_subsystems = [s for s in [user_subsystem] if s] + [\n"
+        "    'EditorAIAssistantSubsystem', 'AIAssistantSubsystem',\n"
+        "    'CopilotEditorSubsystem', 'LLMEditorSubsystem',\n"
+        "    'ChatGPTEditorSubsystem', 'UE5AgentPythonSubsystem',\n"
+        "]\n"
+        "candidate_methods = [m for m in [user_method] if m] + [\n"
+        "    'send_chat_message', 'send_message', 'ask', 'chat', 'prompt', 'query'\n"
+        "]\n"
+        "result = {'success': False, 'tried': [], 'message': msg}\n"
+        "for sub_name in candidate_subsystems:\n"
+        "    cls = getattr(unreal, sub_name, None)\n"
+        "    if cls is None:\n"
+        "        result['tried'].append({'subsystem': sub_name, 'status': 'class_not_found'})\n"
+        "        continue\n"
+        "    try:\n"
+        "        sub = unreal.get_editor_subsystem(cls)\n"
+        "    except Exception as e:\n"
+        "        result['tried'].append({'subsystem': sub_name, 'status': 'get_failed', 'error': str(e)})\n"
+        "        continue\n"
+        "    if sub is None:\n"
+        "        result['tried'].append({'subsystem': sub_name, 'status': 'not_loaded'})\n"
+        "        continue\n"
+        "    for method_name in candidate_methods:\n"
+        "        fn = getattr(sub, method_name, None)\n"
+        "        if not callable(fn):\n"
+        "            continue\n"
+        "        try:\n"
+        "            reply = fn(msg)\n"
+        "            result.update({'success': True, 'subsystem': sub_name, 'method': method_name,\n"
+        "                           'reply': str(reply) if reply is not None else ''})\n"
+        "            break\n"
+        "        except Exception as e:\n"
+        "            result['tried'].append({'subsystem': sub_name, 'method': method_name, 'error': str(e)})\n"
+        "    if result.get('success'):\n"
+        "        break\n"
+        "if not result['success']:\n"
+        "    result['error'] = 'No AI Assistant subsystem/method responded. Use list_editor_subsystems to discover options, or pass explicit subsystem/method arguments.'\n"
+        "print('__MCP_AI_ASSISTANT_BEGIN__' + json.dumps(result) + '__MCP_AI_ASSISTANT_END__')\n"
+    ), *MessageB64, *SubsystemB64, *MethodB64);
+
+    FString Captured;
+    FString Warning;
+    if (!MCP_RunExecCommand(MCP_WrapPythonAsSingleLineExec(Py), Captured, Warning))
+    {
+        return FEpicUnrealMCPCommonUtils::CreateErrorResponse(Warning);
+    }
+
+    // Extract the embedded JSON payload if present.
+    TSharedPtr<FJsonObject> Result = MakeShared<FJsonObject>();
+    const FString BeginTag = TEXT("__MCP_AI_ASSISTANT_BEGIN__");
+    const FString EndTag   = TEXT("__MCP_AI_ASSISTANT_END__");
+    const int32 BeginIdx = Captured.Find(BeginTag);
+    const int32 EndIdx   = Captured.Find(EndTag);
+    if (BeginIdx != INDEX_NONE && EndIdx != INDEX_NONE && EndIdx > BeginIdx)
+    {
+        const FString Payload = Captured.Mid(BeginIdx + BeginTag.Len(), EndIdx - (BeginIdx + BeginTag.Len()));
+        TSharedPtr<FJsonObject> Parsed;
+        TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Payload);
+        if (FJsonSerializer::Deserialize(Reader, Parsed) && Parsed.IsValid())
+        {
+            Parsed->SetStringField(TEXT("raw_output"), Captured);
+            // Ensure the top-level success flag is always present.
+            if (!Parsed->HasField(TEXT("success")))
+            {
+                Parsed->SetBoolField(TEXT("success"), false);
+            }
+            return Parsed;
+        }
+    }
+
+    Result->SetBoolField(TEXT("success"), false);
+    Result->SetStringField(TEXT("error"), TEXT("Could not parse AI Assistant response. The Python Editor Script Plugin may be disabled, or no AI-Assistant subsystem is available."));
+    Result->SetStringField(TEXT("raw_output"), Captured);
+    return Result;
+}
+
+TSharedPtr<FJsonObject> FEpicUnrealMCPEditorCommands::HandleListEditorSubsystems(const TSharedPtr<FJsonObject>& Params)
+{
+    const FString Py = TEXT(
+        "import unreal, json\n"
+        "names = []\n"
+        "for attr in dir(unreal):\n"
+        "    try:\n"
+        "        cls = getattr(unreal, attr)\n"
+        "    except Exception:\n"
+        "        continue\n"
+        "    if not isinstance(cls, type):\n"
+        "        continue\n"
+        "    try:\n"
+        "        if issubclass(cls, unreal.EditorSubsystem) and cls is not unreal.EditorSubsystem:\n"
+        "            names.append(attr)\n"
+        "    except Exception:\n"
+        "        continue\n"
+        "print('__MCP_SUBSYSTEMS_BEGIN__' + json.dumps(sorted(names)) + '__MCP_SUBSYSTEMS_END__')\n"
+    );
+
+    FString Captured;
+    FString Warning;
+    if (!MCP_RunExecCommand(MCP_WrapPythonAsSingleLineExec(Py), Captured, Warning))
+    {
+        return FEpicUnrealMCPCommonUtils::CreateErrorResponse(Warning);
+    }
+
+    TSharedPtr<FJsonObject> Result = MakeShared<FJsonObject>();
+    const FString BeginTag = TEXT("__MCP_SUBSYSTEMS_BEGIN__");
+    const FString EndTag   = TEXT("__MCP_SUBSYSTEMS_END__");
+    const int32 BeginIdx = Captured.Find(BeginTag);
+    const int32 EndIdx   = Captured.Find(EndTag);
+    if (BeginIdx != INDEX_NONE && EndIdx != INDEX_NONE && EndIdx > BeginIdx)
+    {
+        const FString Payload = Captured.Mid(BeginIdx + BeginTag.Len(), EndIdx - (BeginIdx + BeginTag.Len()));
+        TArray<TSharedPtr<FJsonValue>> Parsed;
+        TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Payload);
+        if (FJsonSerializer::Deserialize(Reader, Parsed))
+        {
+            Result->SetBoolField(TEXT("success"), true);
+            Result->SetArrayField(TEXT("subsystems"), Parsed);
+            return Result;
+        }
+    }
+
+    Result->SetBoolField(TEXT("success"), false);
+    Result->SetStringField(TEXT("error"), TEXT("Could not enumerate subsystems. Ensure the Python Editor Script Plugin is enabled."));
+    Result->SetStringField(TEXT("raw_output"), Captured);
     return Result;
 }
