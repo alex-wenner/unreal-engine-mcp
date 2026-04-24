@@ -71,6 +71,12 @@ logger = logging.getLogger("UnrealMCP_Advanced")
 UNREAL_HOST = "127.0.0.1"
 UNREAL_PORT = 55557
 VALID_TOWN_SIZES = {"small", "medium", "large", "metropolis"}
+MIN_MAZE_DIMENSION = 1
+MAX_MAZE_DIMENSION = 50
+MIN_MAZE_CELL_SIZE = 25.0
+MAX_MAZE_CELL_SIZE = 5000.0
+MIN_MAZE_WALL_HEIGHT = 1
+MAX_MAZE_WALL_HEIGHT = 20
 
 class UnrealConnection:
     """
@@ -1308,12 +1314,12 @@ def create_maze(
         if not unreal:
             return {"success": False, "message": "Failed to connect to Unreal Engine"}
 
-        if not (1 <= rows <= 50 and 1 <= cols <= 50):
-            return {"success": False, "message": "rows and cols must be between 1 and 50 cells"}
-        if not (25.0 <= cell_size <= 5000.0):
-            return {"success": False, "message": "cell_size must be between 25 and 5000 centimeters"}
-        if not (1 <= wall_height <= 20):
-            return {"success": False, "message": "wall_height must be between 1 and 20"}
+        if not (MIN_MAZE_DIMENSION <= rows <= MAX_MAZE_DIMENSION and MIN_MAZE_DIMENSION <= cols <= MAX_MAZE_DIMENSION):
+            return {"success": False, "message": f"rows and cols must be between {MIN_MAZE_DIMENSION} and {MAX_MAZE_DIMENSION} cells"}
+        if not (MIN_MAZE_CELL_SIZE <= cell_size <= MAX_MAZE_CELL_SIZE):
+            return {"success": False, "message": f"cell_size must be between {MIN_MAZE_CELL_SIZE:g} and {MAX_MAZE_CELL_SIZE:g} centimeters"}
+        if not (MIN_MAZE_WALL_HEIGHT <= wall_height <= MAX_MAZE_WALL_HEIGHT):
+            return {"success": False, "message": f"wall_height must be between {MIN_MAZE_WALL_HEIGHT} and {MAX_MAZE_WALL_HEIGHT}"}
 
         import random
         if random_seed is not None:
