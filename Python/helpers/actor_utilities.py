@@ -46,8 +46,10 @@ def spawn_blueprint_actor(
         if not unreal_connection:
             return {"success": False, "message": "No Unreal connection provided"}
 
-        location = location or [0, 0, 0]
-        rotation = rotation or [0, 0, 0]
+        if location is None:
+            location = [0, 0, 0]
+        if rotation is None:
+            rotation = [0, 0, 0]
         
         original_name = actor_name
         

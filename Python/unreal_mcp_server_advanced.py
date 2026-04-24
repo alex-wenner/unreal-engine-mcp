@@ -512,9 +512,9 @@ def spawn_actor(
         params = {
             "name": name,
             "type": actor_type,
-            "location": location or [0.0, 0.0, 0.0],
-            "rotation": rotation or [0.0, 0.0, 0.0],
-            "scale": scale or [1.0, 1.0, 1.0],
+            "location": [0.0, 0.0, 0.0] if location is None else location,
+            "rotation": [0.0, 0.0, 0.0] if rotation is None else rotation,
+            "scale": [1.0, 1.0, 1.0] if scale is None else scale,
         }
         if static_mesh:
             params["static_mesh"] = static_mesh
@@ -606,9 +606,9 @@ def add_component_to_blueprint(
             "blueprint_name": blueprint_name,
             "component_type": component_type,
             "component_name": component_name,
-            "location": location or [],
-            "rotation": rotation or [],
-            "scale": scale or [],
+            "location": [] if location is None else location,
+            "rotation": [] if rotation is None else rotation,
+            "scale": [] if scale is None else scale,
             "component_properties": component_properties or {}
         }
         response = unreal.send_command("add_component_to_blueprint", params)
@@ -1269,8 +1269,10 @@ def spawn_physics_blueprint_actor (
                If [R, G, B] is provided, alpha will be set to 1.0 automatically.
     """
     try:
-        location = location or [0.0, 0.0, 0.0]
-        scale = scale or [1.0, 1.0, 1.0]
+        if location is None:
+            location = [0.0, 0.0, 0.0]
+        if scale is None:
+            scale = [1.0, 1.0, 1.0]
         bp_name = f"{name}_BP"
         create_blueprint(bp_name, "Actor")
         add_component_to_blueprint(bp_name, "StaticMeshComponent", "Mesh", scale=scale)
@@ -1331,7 +1333,8 @@ def create_maze(
             return {"success": False, "message": f"wall_height must be between {MIN_MAZE_WALL_HEIGHT} and {MAX_MAZE_WALL_HEIGHT}"}
 
         set_random_seed(random_seed)
-        location = location or [0.0, 0.0, 0.0]
+        if location is None:
+            location = [0.0, 0.0, 0.0]
         spawned = []
         
         # Initialize maze grid - True means wall, False means open
@@ -1599,7 +1602,8 @@ def create_town(
         if not (0.0 <= building_density <= 1.0):
             return {"success": False, "message": "building_density must be between 0.0 and 1.0"}
 
-        location = location or [0.0, 0.0, 0.0]
+        if location is None:
+            location = [0.0, 0.0, 0.0]
         logger.info(f"Creating {town_size} town with {building_density} density at {location}")
         
         # Define town parameters based on size

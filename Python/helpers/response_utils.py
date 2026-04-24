@@ -41,6 +41,8 @@ def normalize_unreal_response(response: Optional[Dict[str, Any]]) -> Dict[str, A
         for key, value in result.items():
             normalized.setdefault(key, value)
 
+    # Only explicit failures get normalized error text; unknown/missing success
+    # values are preserved for callers that need to inspect nonstandard payloads.
     if normalized.get("success") is False:
         error = normalized.get("error") or normalized.get("message")
         if error:
