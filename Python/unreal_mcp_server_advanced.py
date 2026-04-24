@@ -3043,7 +3043,6 @@ def ask_ai_assistant(
 #   * Dynamic "live" resources that query the running editor on demand.
 # ============================================================================
 
-import os as _os
 from pathlib import Path as _Path
 
 _REPO_ROOT = _Path(__file__).resolve().parent.parent

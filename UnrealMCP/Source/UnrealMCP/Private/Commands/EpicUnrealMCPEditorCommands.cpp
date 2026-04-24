@@ -623,8 +623,12 @@ public:
         Output.AppendChar(TEXT('\n'));
     }
 
-    virtual bool CanBeUsedOnAnyThread() const override { return true; }
-    virtual bool CanBeUsedOnMultipleThreads() const override { return true; }
+    // Deliberately single-threaded. All callers run on the game thread
+    // (commands are dispatched via AsyncTask(ENamedThreads::GameThread, ...)
+    // in EpicUnrealMCPBridge), so we don't need multi-thread safety here
+    // and claiming it would be misleading (see FOutputDevice docs).
+    virtual bool CanBeUsedOnAnyThread() const override { return false; }
+    virtual bool CanBeUsedOnMultipleThreads() const override { return false; }
 };
 
 static bool MCP_RunExecCommand(const FString& Command, FString& OutCapturedText, FString& OutError)
