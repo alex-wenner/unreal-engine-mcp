@@ -70,6 +70,7 @@ logger = logging.getLogger("UnrealMCP_Advanced")
 # Configuration
 UNREAL_HOST = "127.0.0.1"
 UNREAL_PORT = 55557
+VALID_TOWN_SIZES = {"small", "medium", "large", "metropolis"}
 
 class UnrealConnection:
     """
@@ -1308,7 +1309,7 @@ def create_maze(
             return {"success": False, "message": "Failed to connect to Unreal Engine"}
 
         if not (1 <= rows <= 50 and 1 <= cols <= 50):
-            return {"success": False, "message": "rows and cols must be between 1 and 50"}
+            return {"success": False, "message": "rows and cols must be between 1 and 50 cells"}
         if not (25.0 <= cell_size <= 5000.0):
             return {"success": False, "message": "cell_size must be between 25 and 5000 centimeters"}
         if not (1 <= wall_height <= 20):
@@ -1584,8 +1585,8 @@ def create_town(
         if not unreal:
             return {"success": False, "message": "Failed to connect to Unreal Engine"}
         
-        if town_size not in {"small", "medium", "large", "metropolis"}:
-            return {"success": False, "message": "town_size must be one of: small, medium, large, metropolis"}
+        if town_size not in VALID_TOWN_SIZES:
+            return {"success": False, "message": f"town_size must be one of: {', '.join(sorted(VALID_TOWN_SIZES))}"}
         if not (0.0 <= building_density <= 1.0):
             return {"success": False, "message": "building_density must be between 0.0 and 1.0"}
 

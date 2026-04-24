@@ -6,10 +6,10 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
-from typing import List
+from typing import List, Union
 
 
-def get_mcp_tool_names(server_path: str | Path) -> List[str]:
+def get_mcp_tool_names(server_path: Union[str, Path]) -> List[str]:
     """Return function names decorated with @mcp.tool() in source order."""
     source_path = Path(server_path)
     tree = ast.parse(source_path.read_text(encoding="utf-8"), filename=str(source_path))

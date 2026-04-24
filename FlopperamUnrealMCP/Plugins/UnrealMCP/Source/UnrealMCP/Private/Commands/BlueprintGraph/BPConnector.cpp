@@ -300,8 +300,13 @@ TSharedPtr<FJsonObject> FBPConnector::DisconnectNodes(const TSharedPtr<FJsonObje
     {
         for (UEdGraph* FuncGraph : Blueprint->FunctionGraphs)
         {
-            if (FuncGraph && (FuncGraph->GetFName().ToString() == FunctionName ||
-                              FuncGraph->GetFName().ToString().Contains(FunctionName)))
+            if (!FuncGraph)
+            {
+                continue;
+            }
+
+            const FString FuncGraphName = FuncGraph->GetFName().ToString();
+            if (FuncGraphName == FunctionName || FuncGraphName.Contains(FunctionName))
             {
                 Graph = FuncGraph;
                 break;
