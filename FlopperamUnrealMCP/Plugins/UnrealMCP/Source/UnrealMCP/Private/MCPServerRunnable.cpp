@@ -54,6 +54,7 @@ uint32 FMCPServerRunnable::Run()
                 ClientSocket->SetReceiveBufferSize(SocketBufferSize, SocketBufferSize);
                 
                 uint8 Buffer[8192];
+                FString MessageBuffer;
                 while (bRunning)
                 {
                     int32 BytesRead = 0;
@@ -69,72 +70,85 @@ uint32 FMCPServerRunnable::Run()
                         Buffer[BytesRead] = '\0';
                         FString ReceivedText = UTF8_TO_TCHAR(Buffer);
                         UE_LOG(LogTemp, Display, TEXT("MCPServerRunnable: Received: %s"), *ReceivedText);
+                        MessageBuffer.Append(ReceivedText);
 
-                        // Parse JSON
-                        TSharedPtr<FJsonObject> JsonObject;
-                        TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(ReceivedText);
-                        
-                        if (FJsonSerializer::Deserialize(Reader, JsonObject))
+                        FString SingleMessage;
+                        FString RemainingMessages;
+                        while (MessageBuffer.Split(TEXT("\n"), &SingleMessage, &RemainingMessages))
                         {
-                            // Get command type
-                            FString CommandType;
-                            if (JsonObject->TryGetStringField(TEXT("type"), CommandType))
+                            MessageBuffer = RemainingMessages;
+                            SingleMessage.TrimStartAndEndInline();
+                            if (SingleMessage.IsEmpty())
                             {
-                                UE_LOG(LogTemp, Display, TEXT("MCPServerRunnable: Executing command: %s"), *CommandType);
+                                continue;
+                            }
 
-                                // Execute command
-                                FString Response = Bridge->ExecuteCommand(CommandType, JsonObject->GetObjectField(TEXT("params")));
-
-                                UE_LOG(LogTemp, Display, TEXT("MCPServerRunnable: Command executed, response length: %d"), Response.Len());
-
-                                // Log response for debugging (truncated for large responses)
-                                FString LogResponse = Response.Len() > 200 ? Response.Left(200) + TEXT("...") : Response;
-                                UE_LOG(LogTemp, Display, TEXT("MCPServerRunnable: Sending response (%d bytes): %s"),
-                                       Response.Len(), *LogResponse);
-
-                                // Convert to UTF8 once
-                                FTCHARToUTF8 UTF8Response(*Response);
-                                const uint8* DataToSend = (const uint8*)UTF8Response.Get();
-                                int32 TotalDataSize = UTF8Response.Length();
-                                int32 TotalBytesSent = 0;
-                                bool bSuccess = true;
-
-                                // Send all data in a loop (TCP may not send everything at once)
-                                while (TotalBytesSent < TotalDataSize)
+                            // Parse JSON
+                            TSharedPtr<FJsonObject> JsonObject;
+                            TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(SingleMessage);
+                            
+                            if (FJsonSerializer::Deserialize(Reader, JsonObject))
+                            {
+                                // Get command type
+                                FString CommandType;
+                                if (JsonObject->TryGetStringField(TEXT("type"), CommandType))
                                 {
-                                    int32 BytesSent = 0;
-                                    bool bSendResult = ClientSocket->Send(DataToSend + TotalBytesSent,
-                                                                          TotalDataSize - TotalBytesSent,
-                                                                          BytesSent);
+                                    UE_LOG(LogTemp, Display, TEXT("MCPServerRunnable: Executing command: %s"), *CommandType);
 
-                                    if (!bSendResult)
+                                    // Execute command
+                                    FString Response = Bridge->ExecuteCommand(CommandType, JsonObject->GetObjectField(TEXT("params"))) + TEXT("\n");
+
+                                    UE_LOG(LogTemp, Display, TEXT("MCPServerRunnable: Command executed, response length: %d"), Response.Len());
+
+                                    // Log response for debugging (truncated for large responses)
+                                    FString LogResponse = Response.Len() > 200 ? Response.Left(200) + TEXT("...") : Response;
+                                    UE_LOG(LogTemp, Display, TEXT("MCPServerRunnable: Sending response (%d bytes): %s"),
+                                           Response.Len(), *LogResponse);
+
+                                    // Convert to UTF8 once
+                                    FTCHARToUTF8 UTF8Response(*Response);
+                                    const uint8* DataToSend = (const uint8*)UTF8Response.Get();
+                                    int32 TotalDataSize = UTF8Response.Length();
+                                    int32 TotalBytesSent = 0;
+                                    bool bSuccess = true;
+
+                                    // Send all data in a loop (TCP may not send everything at once)
+                                    while (TotalBytesSent < TotalDataSize)
                                     {
-                                        int32 LastError = (int32)ISocketSubsystem::Get()->GetLastErrorCode();
-                                        UE_LOG(LogTemp, Error, TEXT("MCPServerRunnable: Failed to send response after %d/%d bytes - Error code: %d"),
-                                               TotalBytesSent, TotalDataSize, LastError);
-                                        bSuccess = false;
-                                        break;
+                                        int32 BytesSent = 0;
+                                        bool bSendResult = ClientSocket->Send(DataToSend + TotalBytesSent,
+                                                                              TotalDataSize - TotalBytesSent,
+                                                                              BytesSent);
+
+                                        if (!bSendResult)
+                                        {
+                                            int32 LastError = (int32)ISocketSubsystem::Get()->GetLastErrorCode();
+                                            UE_LOG(LogTemp, Error, TEXT("MCPServerRunnable: Failed to send response after %d/%d bytes - Error code: %d"),
+                                                   TotalBytesSent, TotalDataSize, LastError);
+                                            bSuccess = false;
+                                            break;
+                                        }
+
+                                        TotalBytesSent += BytesSent;
+                                        UE_LOG(LogTemp, Display, TEXT("MCPServerRunnable: Sent %d bytes (%d/%d total)"),
+                                               BytesSent, TotalBytesSent, TotalDataSize);
                                     }
 
-                                    TotalBytesSent += BytesSent;
-                                    UE_LOG(LogTemp, Display, TEXT("MCPServerRunnable: Sent %d bytes (%d/%d total)"),
-                                           BytesSent, TotalBytesSent, TotalDataSize);
+                                    if (bSuccess)
+                                    {
+                                        UE_LOG(LogTemp, Display, TEXT("MCPServerRunnable: Response sent successfully (%d bytes)"),
+                                               TotalBytesSent);
+                                    }
                                 }
-
-                                if (bSuccess)
+                                else
                                 {
-                                    UE_LOG(LogTemp, Display, TEXT("MCPServerRunnable: Response sent successfully (%d bytes)"),
-                                           TotalBytesSent);
+                                    UE_LOG(LogTemp, Warning, TEXT("MCPServerRunnable: Missing 'type' field in command"));
                                 }
                             }
                             else
                             {
-                                UE_LOG(LogTemp, Warning, TEXT("MCPServerRunnable: Missing 'type' field in command"));
+                                UE_LOG(LogTemp, Warning, TEXT("MCPServerRunnable: Failed to parse JSON from: %s"), *SingleMessage);
                             }
-                        }
-                        else
-                        {
-                            UE_LOG(LogTemp, Warning, TEXT("MCPServerRunnable: Failed to parse JSON from: %s"), *ReceivedText);
                         }
                     }
                     else

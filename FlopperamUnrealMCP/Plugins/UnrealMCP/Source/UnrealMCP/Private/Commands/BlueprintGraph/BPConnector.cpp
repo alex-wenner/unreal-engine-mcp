@@ -254,6 +254,159 @@ TSharedPtr<FJsonObject> FBPConnector::ConnectNodes(const TSharedPtr<FJsonObject>
     return Result;
 }
 
+TSharedPtr<FJsonObject> FBPConnector::DisconnectNodes(const TSharedPtr<FJsonObject>& Params)
+{
+    TSharedPtr<FJsonObject> Result = MakeShared<FJsonObject>();
+
+    FString BlueprintName = Params->GetStringField(TEXT("blueprint_name"));
+    FString SourceNodeId = Params->GetStringField(TEXT("source_node_id"));
+    FString SourcePinName = Params->GetStringField(TEXT("source_pin_name"));
+    FString TargetNodeId = Params->GetStringField(TEXT("target_node_id"));
+    FString TargetPinName = Params->GetStringField(TEXT("target_pin_name"));
+
+    FString FunctionName;
+    Params->TryGetStringField(TEXT("function_name"), FunctionName);
+
+    FString BlueprintPath = BlueprintName;
+    if (!BlueprintPath.StartsWith(TEXT("/")))
+    {
+        BlueprintPath = TEXT("/Game/Blueprints/") + BlueprintPath;
+    }
+    if (!BlueprintPath.Contains(TEXT(".")))
+    {
+        BlueprintPath += TEXT(".") + FPaths::GetBaseFilename(BlueprintPath);
+    }
+
+    UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *BlueprintPath);
+    if (!Blueprint && UEditorAssetLibrary::DoesAssetExist(BlueprintPath))
+    {
+        Blueprint = Cast<UBlueprint>(UEditorAssetLibrary::LoadAsset(BlueprintPath));
+    }
+
+    if (!Blueprint)
+    {
+        Result->SetBoolField(TEXT("success"), false);
+        Result->SetStringField(TEXT("error"), TEXT("Blueprint not found"));
+
+        TSharedPtr<FJsonObject> Details = MakeShared<FJsonObject>();
+        Details->SetStringField(TEXT("requested_blueprint"), BlueprintName);
+        Details->SetStringField(TEXT("resolved_path"), BlueprintPath);
+        Result->SetObjectField(TEXT("error_details"), Details);
+        return Result;
+    }
+
+    UEdGraph* Graph = nullptr;
+    if (!FunctionName.IsEmpty())
+    {
+        for (UEdGraph* FuncGraph : Blueprint->FunctionGraphs)
+        {
+            if (FuncGraph && (FuncGraph->GetFName().ToString() == FunctionName ||
+                              FuncGraph->GetFName().ToString().Contains(FunctionName)))
+            {
+                Graph = FuncGraph;
+                break;
+            }
+        }
+
+        if (!Graph)
+        {
+            Result->SetBoolField(TEXT("success"), false);
+            Result->SetStringField(TEXT("error"), FString::Printf(TEXT("Function graph not found: %s"), *FunctionName));
+
+            TArray<TSharedPtr<FJsonValue>> AvailableFuncs;
+            for (UEdGraph* FuncGraph : Blueprint->FunctionGraphs)
+            {
+                if (FuncGraph)
+                {
+                    AvailableFuncs.Add(MakeShared<FJsonValueString>(FuncGraph->GetFName().ToString()));
+                }
+            }
+            TSharedPtr<FJsonObject> Details = MakeShared<FJsonObject>();
+            Details->SetArrayField(TEXT("available_function_graphs"), AvailableFuncs);
+            Result->SetObjectField(TEXT("error_details"), Details);
+            return Result;
+        }
+    }
+    else if (Blueprint->UbergraphPages.Num() > 0)
+    {
+        Graph = Blueprint->UbergraphPages[0];
+    }
+
+    if (!Graph)
+    {
+        Result->SetBoolField(TEXT("success"), false);
+        Result->SetStringField(TEXT("error"), TEXT("Graph not found"));
+        return Result;
+    }
+
+    UK2Node* SourceNode = FindNodeById(Graph, SourceNodeId);
+    UK2Node* TargetNode = FindNodeById(Graph, TargetNodeId);
+    if (!SourceNode || !TargetNode)
+    {
+        Result->SetBoolField(TEXT("success"), false);
+        TArray<FString> MissingIds;
+        if (!SourceNode) { MissingIds.Add(SourceNodeId); }
+        if (!TargetNode) { MissingIds.Add(TargetNodeId); }
+        Result->SetStringField(TEXT("error"),
+            FString::Printf(TEXT("Node not found: %s"), *FString::Join(MissingIds, TEXT(", "))));
+
+        TSharedPtr<FJsonObject> Details = MakeShared<FJsonObject>();
+        Details->SetArrayField(TEXT("available_nodes"), BuildNodeSummaries(Graph));
+        Result->SetObjectField(TEXT("error_details"), Details);
+        return Result;
+    }
+
+    UEdGraphPin* SourcePin = FindPinByName(SourceNode, SourcePinName, EGPD_Output);
+    UEdGraphPin* TargetPin = FindPinByName(TargetNode, TargetPinName, EGPD_Input);
+    if (!SourcePin || !TargetPin)
+    {
+        Result->SetBoolField(TEXT("success"), false);
+        TArray<FString> MissingPins;
+        if (!SourcePin) { MissingPins.Add(FString::Printf(TEXT("output '%s' on %s"), *SourcePinName, *SourceNodeId)); }
+        if (!TargetPin) { MissingPins.Add(FString::Printf(TEXT("input '%s' on %s"), *TargetPinName, *TargetNodeId)); }
+        Result->SetStringField(TEXT("error"),
+            FString::Printf(TEXT("Pin not found: %s"), *FString::Join(MissingPins, TEXT(", "))));
+
+        TSharedPtr<FJsonObject> Details = MakeShared<FJsonObject>();
+        TSharedPtr<FJsonObject> SourcePins = MakeShared<FJsonObject>();
+        SourcePins->SetStringField(TEXT("node_id"), SourceNodeId);
+        SourcePins->SetArrayField(TEXT("pins"), BuildPinSummaries(SourceNode));
+        Details->SetObjectField(TEXT("source_node"), SourcePins);
+
+        TSharedPtr<FJsonObject> TargetPins = MakeShared<FJsonObject>();
+        TargetPins->SetStringField(TEXT("node_id"), TargetNodeId);
+        TargetPins->SetArrayField(TEXT("pins"), BuildPinSummaries(TargetNode));
+        Details->SetObjectField(TEXT("target_node"), TargetPins);
+        Result->SetObjectField(TEXT("error_details"), Details);
+        return Result;
+    }
+
+    if (!SourcePin->LinkedTo.Contains(TargetPin))
+    {
+        Result->SetBoolField(TEXT("success"), false);
+        Result->SetStringField(TEXT("error"), TEXT("Pins are not currently connected"));
+
+        TSharedPtr<FJsonObject> Details = MakeShared<FJsonObject>();
+        Details->SetStringField(TEXT("source_pin_type"), DescribePinType(SourcePin));
+        Details->SetStringField(TEXT("target_pin_type"), DescribePinType(TargetPin));
+        Result->SetObjectField(TEXT("error_details"), Details);
+        return Result;
+    }
+
+    SourcePin->BreakLinkTo(TargetPin);
+    Blueprint->MarkPackageDirty();
+    FKismetEditorUtilities::CompileBlueprint(Blueprint);
+
+    Result->SetBoolField(TEXT("success"), true);
+    TSharedPtr<FJsonObject> ConnectionInfo = MakeShared<FJsonObject>();
+    ConnectionInfo->SetStringField(TEXT("source_node"), SourceNodeId);
+    ConnectionInfo->SetStringField(TEXT("source_pin"), SourcePinName);
+    ConnectionInfo->SetStringField(TEXT("target_node"), TargetNodeId);
+    ConnectionInfo->SetStringField(TEXT("target_pin"), TargetPinName);
+    Result->SetObjectField(TEXT("disconnected"), ConnectionInfo);
+    return Result;
+}
+
 UK2Node* FBPConnector::FindNodeById(UEdGraph* Graph, const FString& NodeId)
 {
     if (!Graph)

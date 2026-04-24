@@ -1,6 +1,6 @@
 # 🔧 Advanced Tools Reference
 
-Complete documentation for all 21 tools in the Unreal MCP Advanced Server.
+Reference documentation for the Unreal MCP Advanced Server. The canonical tool list is generated from `@mcp.tool()` functions in `Python/unreal_mcp_server_advanced.py`.
 
 ## 🏗️ World Building Tools
 
@@ -99,7 +99,7 @@ Generate solvable mazes using recursive backtracking algorithm.
 - **Guaranteed Solvable**: Uses recursive backtracking for valid paths
 - **Clear Entrance/Exit**: Marked with distinctive objects
 - **Open Top Design**: Walls are limited height for aerial viewing
-- **No Dead Ends**: Every area is accessible
+- **Connected Layout**: Every cell is reachable from the entrance; recursive backtracking may still create dead ends as part of the challenge
 
 **Example:**
 ```bash

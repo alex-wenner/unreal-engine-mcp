@@ -1,28 +1,28 @@
 # Unreal MCP Advanced Server
 
-A streamlined version of the Unreal MCP server that focuses only on advanced composition and building tools, reducing the total tool count from 44 to **21 tools**.
+A feature-rich Unreal MCP server that exposes **47 tools** across editor actor control, Blueprint authoring, graph inspection/editing, asset discovery, materials, physics, and advanced world generation.
 
 ## What's Included
 
-This server contains only the essential tools needed for advanced level building and composition:
+This server contains tools for advanced level building and composition plus lower-level editor automation:
 
-### Essential Actor Management (5 tools)
+### Essential Actor Management
 - `get_actors_in_level()` - List all actors
 - `find_actors_by_name(pattern)` - Find actors by pattern
 - `spawn_actor(name, type, location, rotation)` - Create basic actors
 - `delete_actor(name)` - Remove actors
 - `set_actor_transform(name, location, rotation, scale)` - Modify transforms
 
-### Essential Blueprint Tools (6 tools)
+### Essential Blueprint Tools
 *Minimal set needed for physics actors*
 - `create_blueprint(name, parent_class)` - Create Blueprint classes
 - `add_component_to_blueprint()` - Add components to Blueprints
 - `set_static_mesh_properties()` - Set mesh properties
 - `set_physics_properties()` - Configure physics
 - `compile_blueprint(name)` - Compile Blueprint changes
-- `spawn_blueprint_actor()` - Spawn from Blueprint
+- `spawn_physics_blueprint_actor()` - Create and spawn a Blueprint-backed physics actor
 
-### Advanced Composition Tools (10 tools)
+### Advanced Composition Tools
 *The main focus - advanced building and composition tools from the merge request*
 - `create_pyramid(base_size, block_size, location, ...)` - Build pyramids
 - `create_wall(length, height, block_size, location, orientation, ...)` - Generate walls
@@ -65,19 +65,13 @@ construct_house(location=[1000, 0, 0], house_style="cottage")
 construct_house(width=1500, depth=1200, house_style="mansion")
 ```
 
-## What's Removed
+## Not Yet Included
 
-The following tool categories were removed to reduce complexity:
-- UMG/Widget tools (5+ tools)
-- Advanced Blueprint node management (8+ tools)
-- Detailed physics material properties (3+ tools)
-- Project configuration tools (2+ tools)
-- Editor viewport/screenshot tools (3+ tools)
-- Advanced component property setters (2+ tools)
+The server is designed to grow toward full editor parity. Current gaps include UMG/widget editing, viewport screenshots/camera control, Sequencer automation, project settings, and broad asset-management operations such as rename/move/reimport.
 
 ## Usage
 
-Run the streamlined server instead of the full one:
+Run the MCP server:
 
 ```bash
 python unreal_mcp_server_advanced.py
@@ -85,10 +79,10 @@ python unreal_mcp_server_advanced.py
 
 ## Benefits
 
-- **Simpler**: Only 21 tools vs 44 tools
-- **Focused**: Concentrates on advanced building/composition
+- **Feature-rich**: 47 tools covering composition, Blueprint graph work, materials, and asset discovery
+- **Focused**: Concentrates on editor automation for AI-assisted Unreal workflows
 - **Faster**: Reduced startup time and smaller tool list
 - **Maintainable**: Easier to understand and modify
 - **Self-contained**: No external tool dependencies
 
-This server is perfect for users who primarily want to use the advanced composition tools for building complex structures, physics objects, and level layouts without the overhead of the full tool suite. 
+The canonical tool manifest is the set of `@mcp.tool()` functions in `unreal_mcp_server_advanced.py`; tests can parse that manifest to catch documentation drift.

@@ -27,6 +27,10 @@ TSharedPtr<FJsonObject> FEpicUnrealMCPBlueprintGraphCommands::HandleCommand(cons
     {
         return HandleConnectNodes(Params);
     }
+    else if (CommandType == TEXT("disconnect_nodes"))
+    {
+        return HandleDisconnectNodes(Params);
+    }
     else if (CommandType == TEXT("create_variable"))
     {
         return HandleCreateVariable(Params);
@@ -130,6 +134,44 @@ TSharedPtr<FJsonObject> FEpicUnrealMCPBlueprintGraphCommands::HandleConnectNodes
 
     // Use the BPConnector to connect the nodes
     return FBPConnector::ConnectNodes(Params);
+}
+
+TSharedPtr<FJsonObject> FEpicUnrealMCPBlueprintGraphCommands::HandleDisconnectNodes(const TSharedPtr<FJsonObject>& Params)
+{
+    FString BlueprintName;
+    if (!Params->TryGetStringField(TEXT("blueprint_name"), BlueprintName))
+    {
+        return FEpicUnrealMCPCommonUtils::CreateErrorResponse(TEXT("Missing 'blueprint_name' parameter"));
+    }
+
+    FString SourceNodeId;
+    if (!Params->TryGetStringField(TEXT("source_node_id"), SourceNodeId))
+    {
+        return FEpicUnrealMCPCommonUtils::CreateErrorResponse(TEXT("Missing 'source_node_id' parameter"));
+    }
+
+    FString SourcePinName;
+    if (!Params->TryGetStringField(TEXT("source_pin_name"), SourcePinName))
+    {
+        return FEpicUnrealMCPCommonUtils::CreateErrorResponse(TEXT("Missing 'source_pin_name' parameter"));
+    }
+
+    FString TargetNodeId;
+    if (!Params->TryGetStringField(TEXT("target_node_id"), TargetNodeId))
+    {
+        return FEpicUnrealMCPCommonUtils::CreateErrorResponse(TEXT("Missing 'target_node_id' parameter"));
+    }
+
+    FString TargetPinName;
+    if (!Params->TryGetStringField(TEXT("target_pin_name"), TargetPinName))
+    {
+        return FEpicUnrealMCPCommonUtils::CreateErrorResponse(TEXT("Missing 'target_pin_name' parameter"));
+    }
+
+    UE_LOG(LogTemp, Display, TEXT("FEpicUnrealMCPBlueprintGraphCommands::HandleDisconnectNodes: Disconnecting %s.%s from %s.%s in blueprint '%s'"),
+        *SourceNodeId, *SourcePinName, *TargetNodeId, *TargetPinName, *BlueprintName);
+
+    return FBPConnector::DisconnectNodes(Params);
 }
 
 TSharedPtr<FJsonObject> FEpicUnrealMCPBlueprintGraphCommands::HandleCreateVariable(const TSharedPtr<FJsonObject>& Params)

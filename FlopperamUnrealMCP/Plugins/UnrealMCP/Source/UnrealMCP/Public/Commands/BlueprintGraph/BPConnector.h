@@ -26,6 +26,13 @@ public:
      */
     static TSharedPtr<FJsonObject> ConnectNodes(const TSharedPtr<FJsonObject>& Params);
 
+    /**
+     * Disconnects two Blueprint nodes via their pins
+     * @param Params JSON containing blueprint_name, source_node_id, source_pin_name, target_node_id, target_pin_name
+     * @return JSON with success and connection details. On failure, an "error_details" object may be attached.
+     */
+    static TSharedPtr<FJsonObject> DisconnectNodes(const TSharedPtr<FJsonObject>& Params);
+
 private:
     /**
      * Finds a node by its ID in the graph

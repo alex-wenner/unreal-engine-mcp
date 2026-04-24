@@ -2,8 +2,10 @@
 Actor utility functions for Unreal MCP Server.
 Contains helper functions for spawning and managing actors.
 """
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 import logging
+
+from helpers.response_utils import normalize_unreal_response
 
 logger = logging.getLogger(__name__)
 
@@ -22,8 +24,8 @@ def spawn_blueprint_actor(
     unreal_connection,
     blueprint_name: str,
     actor_name: str,
-    location: List[float] = [0, 0, 0],
-    rotation: List[float] = [0, 0, 0],
+    location: Optional[List[float]] = None,
+    rotation: Optional[List[float]] = None,
     auto_unique_name: bool = True
 ) -> Dict[str, Any]:
     """
@@ -43,6 +45,9 @@ def spawn_blueprint_actor(
     try:
         if not unreal_connection:
             return {"success": False, "message": "No Unreal connection provided"}
+
+        location = location or [0, 0, 0]
+        rotation = rotation or [0, 0, 0]
         
         original_name = actor_name
         
@@ -60,7 +65,7 @@ def spawn_blueprint_actor(
             "rotation": rotation
         }
         
-        response = unreal_connection.send_command("spawn_blueprint_actor", params)
+        response = normalize_unreal_response(unreal_connection.send_command("spawn_blueprint_actor", params))
         
         # Mark actor as created if successful
         if response and response.get("status") == "success":
@@ -105,8 +110,7 @@ def get_blueprint_material_info(
             "component_name": component_name
         }
         
-        response = unreal_connection.send_command("get_blueprint_material_info", params)
-        return response or {"success": False, "message": "No response from Unreal"}
+        return normalize_unreal_response(unreal_connection.send_command("get_blueprint_material_info", params))
         
     except Exception as e:
         logger.error(f"get_blueprint_material_info helper error: {e}")

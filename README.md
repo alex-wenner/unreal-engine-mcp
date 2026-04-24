@@ -236,6 +236,27 @@ Note that on Mac, and sometimes on Windows, you may have to replace the "uv" str
 
 ---
 
+## Source of Truth & Validation
+
+- `Python/unreal_mcp_server_advanced.py` is the canonical MCP tool manifest; each exposed tool is decorated with `@mcp.tool()`.
+- `UnrealMCP/` is the standalone plugin source.
+- `FlopperamUnrealMCP/Plugins/UnrealMCP/` is the same plugin vendored into the sample project and should be kept in sync with `UnrealMCP/`.
+- Lightweight Python tests under `Python/tests/` validate response normalization, actor-name collision handling, and documented core tool exposure.
+
+## Feature-Rich Agent Roadmap
+
+To move toward “anything a human can do in the editor,” prioritize Unreal editor automation surfaces documented by Epic:
+
+- **Undoable editor operations**: wrap mutating C++ commands in `FScopedTransaction` so generated scenes, Blueprint edits, and asset changes can be undone in one step.
+- **Asset workflows**: expose asset creation, duplicate, rename, move, delete, reimport, redirector cleanup, and dependency/reference inspection through Asset Tools and Asset Registry APIs.
+- **Level editing**: add selection, grouping, folders, layers, snapping, pivot, transform gizmo-style operations, actor replacement, batch tagging, and cleanup-by-prefix/tag.
+- **Viewport automation**: expose editor camera control, focus/selection framing, viewport mode changes, screenshots, and visual validation snapshots.
+- **Blueprint parity**: add Blueprint validation, compile-all, interface implementation, macro/library support, component hierarchy editing, graph layout, and richer node discovery.
+- **Sequencer/cinematics**: create and edit Level Sequences, cameras, tracks, keyframes, bindings, renders, and cinematic previews.
+- **Content creation helpers**: add materials, material instances, data assets, data tables, Niagara systems, animations, lights, collisions, LODs, and style palettes.
+- **Project/settings automation**: expose input mappings, collision channels, game modes, maps, packaging settings, plugin enablement, and common editor preferences.
+- **Safety and planning**: add dry-run estimates, bounding boxes, actor-count limits, progress updates, operation manifests, and generated-scene snapshots.
+
 ## Architecture
 
 ```mermaid
