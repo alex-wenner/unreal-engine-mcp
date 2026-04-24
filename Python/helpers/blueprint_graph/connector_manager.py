@@ -7,6 +7,8 @@ import json
 import logging
 from typing import Dict, Any, Optional
 
+from helpers.response_utils import normalize_unreal_response
+
 logger = logging.getLogger("BlueprintGraph.ConnectorManager")
 
 
@@ -63,7 +65,7 @@ def connect_nodes(
         if function_name:
             params["function_name"] = function_name
 
-        response = unreal_connection.send_command("connect_nodes", params)
+        response = normalize_unreal_response(unreal_connection.send_command("connect_nodes", params))
 
         if response.get("success"):
             logger.info(
@@ -79,6 +81,52 @@ def connect_nodes(
 
     except Exception as e:
         logger.error(f"Exception in connect_nodes: {e}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+def disconnect_nodes(
+    unreal_connection,
+    blueprint_name: str,
+    source_node_id: str,
+    source_pin_name: str,
+    target_node_id: str,
+    target_pin_name: str,
+    function_name: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Disconnect two linked pins in a Blueprint graph.
+    """
+    try:
+        params = {
+            "blueprint_name": blueprint_name,
+            "source_node_id": source_node_id,
+            "source_pin_name": source_pin_name,
+            "target_node_id": target_node_id,
+            "target_pin_name": target_pin_name
+        }
+
+        if function_name:
+            params["function_name"] = function_name
+
+        response = normalize_unreal_response(unreal_connection.send_command("disconnect_nodes", params))
+
+        if response.get("success"):
+            logger.info(
+                f"Successfully disconnected nodes in {blueprint_name}: "
+                f"{source_node_id}.{source_pin_name} -/-> {target_node_id}.{target_pin_name}"
+            )
+        else:
+            logger.error(
+                f"Failed to disconnect nodes: {response.get('error', 'Unknown error')}"
+            )
+
+        return response
+
+    except Exception as e:
+        logger.error(f"Exception in disconnect_nodes: {e}")
         return {
             "success": False,
             "error": str(e)

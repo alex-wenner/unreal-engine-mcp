@@ -39,6 +39,7 @@ from helpers.actor_utilities import spawn_blueprint_actor, get_blueprint_materia
 from helpers.actor_name_manager import (
     safe_spawn_actor, safe_delete_actor
 )
+from helpers.response_utils import normalize_unreal_response
 from helpers.bridge_aqueduct_creation import (
     build_suspension_bridge_structure, build_aqueduct_structure
 )
@@ -358,7 +359,7 @@ class UnrealConnection:
                     "type": command,
                     "params": params or {}
                 }
-                command_json = json.dumps(command_obj)
+                command_json = json.dumps(command_obj) + "\n"
                 
                 logger.info(f"Sending command (attempt {attempt + 1}): {command}")
                 logger.debug(f"Command payload: {command_json[:500]}...")
@@ -372,7 +373,7 @@ class UnrealConnection:
                 
                 # Parse response
                 try:
-                    response = json.loads(response_data.decode('utf-8'))
+                    response = normalize_unreal_response(json.loads(response_data.decode('utf-8')))
                 except json.JSONDecodeError as e:
                     logger.error(f"JSON decode error: {e}")
                     logger.debug(f"Raw response: {response_data[:500]}")
@@ -477,6 +478,36 @@ def find_actors_by_name(pattern: str) -> Dict[str, Any]:
         return {"success": False, "message": str(e)}
 
 
+@mcp.tool()
+def spawn_actor(
+    name: str,
+    type: str = "StaticMeshActor",
+    location: Optional[List[float]] = None,
+    rotation: Optional[List[float]] = None,
+    scale: Optional[List[float]] = None,
+    static_mesh: str = "/Engine/BasicShapes/Cube.Cube"
+) -> Dict[str, Any]:
+    """Spawn an actor in the current level with automatic unique-name handling."""
+    unreal = get_unreal_connection()
+    if not unreal:
+        return {"success": False, "message": "Failed to connect to Unreal Engine"}
+
+    try:
+        params = {
+            "name": name,
+            "type": type,
+            "location": location or [0.0, 0.0, 0.0],
+            "rotation": rotation or [0.0, 0.0, 0.0],
+            "scale": scale or [1.0, 1.0, 1.0],
+        }
+        if static_mesh:
+            params["static_mesh"] = static_mesh
+        return safe_spawn_actor(unreal, params)
+    except Exception as e:
+        logger.error(f"spawn_actor error: {e}")
+        return {"success": False, "message": str(e)}
+
+
 
 @mcp.tool()
 def delete_actor(name: str) -> Dict[str, Any]:
@@ -544,10 +575,10 @@ def add_component_to_blueprint(
     blueprint_name: str,
     component_type: str,
     component_name: str,
-    location: List[float] = [],
-    rotation: List[float] = [],
-    scale: List[float] = [],
-    component_properties: Dict[str, Any] = {}
+    location: Optional[List[float]] = None,
+    rotation: Optional[List[float]] = None,
+    scale: Optional[List[float]] = None,
+    component_properties: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     """Add a component to a Blueprint."""
     unreal = get_unreal_connection()
@@ -559,10 +590,10 @@ def add_component_to_blueprint(
             "blueprint_name": blueprint_name,
             "component_type": component_type,
             "component_name": component_name,
-            "location": location,
-            "rotation": rotation,
-            "scale": scale,
-            "component_properties": component_properties
+            "location": location or [],
+            "rotation": rotation or [],
+            "scale": scale or [],
+            "component_properties": component_properties or {}
         }
         response = unreal.send_command("add_component_to_blueprint", params)
         return response or {"success": False, "message": "No response from Unreal"}
@@ -1202,12 +1233,12 @@ def create_arch(
 def spawn_physics_blueprint_actor (
     name: str,
     mesh_path: str = "/Engine/BasicShapes/Cube.Cube",
-    location: List[float] = [0.0, 0.0, 0.0],
+    location: Optional[List[float]] = None,
     mass: float = 1.0,
     simulate_physics: bool = True,
     gravity_enabled: bool = True,
     color: List[float] = None,  # Optional color parameter [R, G, B] or [R, G, B, A]
-    scale: List[float] = [1.0, 1.0, 1.0]  # Default scale
+    scale: Optional[List[float]] = None  # Default scale
 ) -> Dict[str, Any]:
     """
     Quickly spawn a single actor with physics, color, and a specific mesh.
@@ -1222,6 +1253,8 @@ def spawn_physics_blueprint_actor (
                If [R, G, B] is provided, alpha will be set to 1.0 automatically.
     """
     try:
+        location = location or [0.0, 0.0, 0.0]
+        scale = scale or [1.0, 1.0, 1.0]
         bp_name = f"{name}_BP"
         create_blueprint(bp_name, "Actor")
         add_component_to_blueprint(bp_name, "StaticMeshComponent", "Mesh", scale=scale)
@@ -1265,15 +1298,26 @@ def create_maze(
     cols: int = 8,
     cell_size: float = 300.0,
     wall_height: int = 3,
-    location: List[float] = [0.0, 0.0, 0.0]
+    location: Optional[List[float]] = None,
+    random_seed: Optional[int] = None
 ) -> Dict[str, Any]:
     """Create a proper solvable maze with entrance, exit, and guaranteed path using recursive backtracking algorithm."""
     try:
         unreal = get_unreal_connection()
         if not unreal:
             return {"success": False, "message": "Failed to connect to Unreal Engine"}
-            
+
+        if not (1 <= rows <= 50 and 1 <= cols <= 50):
+            return {"success": False, "message": "rows and cols must be between 1 and 50"}
+        if not (25.0 <= cell_size <= 5000.0):
+            return {"success": False, "message": "cell_size must be between 25 and 5000 centimeters"}
+        if not (1 <= wall_height <= 20):
+            return {"success": False, "message": "wall_height must be between 1 and 20"}
+
         import random
+        if random_seed is not None:
+            random.seed(random_seed)
+        location = location or [0.0, 0.0, 0.0]
         spawned = []
         
         # Initialize maze grid - True means wall, False means open
@@ -1522,20 +1566,30 @@ def set_mesh_material_color(
 def create_town(
     town_size: str = "medium",  # "small", "medium", "large", "metropolis"
     building_density: float = 0.7,  # 0.0 to 1.0
-    location: List[float] = [0.0, 0.0, 0.0],
+    location: Optional[List[float]] = None,
     name_prefix: str = "Town",
     include_infrastructure: bool = True,
-    architectural_style: str = "mixed"  # "modern", "cottage", "mansion", "mixed", "downtown", "futuristic"
+    architectural_style: str = "mixed",  # "modern", "cottage", "mansion", "mixed", "downtown", "futuristic"
+    random_seed: Optional[int] = None
 ) -> Dict[str, Any]:
     """Create a full dynamic town with buildings, streets, infrastructure, and vehicles."""
     try:
         import random
-        random.seed()  # Use different seed each time for variety
+        if random_seed is not None:
+            random.seed(random_seed)
+        else:
+            random.seed()  # Use different seed each time for variety
         
         unreal = get_unreal_connection()
         if not unreal:
             return {"success": False, "message": "Failed to connect to Unreal Engine"}
         
+        if town_size not in {"small", "medium", "large", "metropolis"}:
+            return {"success": False, "message": "town_size must be one of: small, medium, large, metropolis"}
+        if not (0.0 <= building_density <= 1.0):
+            return {"success": False, "message": "building_density must be between 0.0 and 1.0"}
+
+        location = location or [0.0, 0.0, 0.0]
         logger.info(f"Creating {town_size} town with {building_density} density at {location}")
         
         # Define town parameters based on size
@@ -2175,6 +2229,38 @@ def connect_nodes(
     except Exception as e:
         logger.error(f"connect_nodes error: {e}")
         return {"success": False, "message": str(e)}
+
+
+@mcp.tool()
+def disconnect_nodes(
+    blueprint_name: str,
+    source_node_id: str,
+    source_pin_name: str,
+    target_node_id: str,
+    target_pin_name: str,
+    function_name: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Disconnect two nodes in a Blueprint graph.
+    """
+    unreal = get_unreal_connection()
+    if not unreal:
+        return {"success": False, "message": "Failed to connect to Unreal Engine"}
+
+    try:
+        return connector_manager.disconnect_nodes(
+            unreal,
+            blueprint_name,
+            source_node_id,
+            source_pin_name,
+            target_node_id,
+            target_pin_name,
+            function_name
+        )
+    except Exception as e:
+        logger.error(f"disconnect_nodes error: {e}")
+        return {"success": False, "message": str(e)}
+
 
 @mcp.tool()
 def create_variable(

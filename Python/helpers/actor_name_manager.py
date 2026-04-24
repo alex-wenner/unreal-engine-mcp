@@ -10,6 +10,8 @@ import time
 import uuid
 from typing import Dict, Any, Set, Optional
 
+from helpers.response_utils import normalize_unreal_response
+
 # Configure logging
 logger = logging.getLogger("ActorNameManager")
 
@@ -78,7 +80,9 @@ class ActorNameManager:
         # If we have a connection, check with Unreal Engine
         if unreal_connection:
             try:
-                response = unreal_connection.send_command("find_actors_by_name", {"pattern": name})
+                response = normalize_unreal_response(
+                    unreal_connection.send_command("find_actors_by_name", {"pattern": name})
+                )
                 if response and response.get("status") == "success" and "actors" in response:
                     actors = response.get("actors", [])
                     if isinstance(actors, list):
@@ -212,5 +216,4 @@ def safe_delete_actor(unreal_connection, actor_name: str) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Error in safe_delete_actor: {e}")
         return {"success": False, "message": str(e)}
-
 
