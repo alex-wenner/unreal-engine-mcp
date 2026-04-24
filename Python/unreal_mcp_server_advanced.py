@@ -9,6 +9,7 @@ import logging
 import socket
 import json
 import math
+import random
 import struct
 import time
 import threading
@@ -77,6 +78,14 @@ MIN_MAZE_CELL_SIZE = 25.0
 MAX_MAZE_CELL_SIZE = 5000.0
 MIN_MAZE_WALL_HEIGHT = 1
 MAX_MAZE_WALL_HEIGHT = 20
+
+
+def set_random_seed(seed: Optional[int] = None) -> None:
+    """Set deterministic randomness when a seed is provided, otherwise use system entropy."""
+    if seed is not None:
+        random.seed(seed)
+    else:
+        random.seed()
 
 class UnrealConnection:
     """
@@ -488,7 +497,7 @@ def find_actors_by_name(pattern: str) -> Dict[str, Any]:
 @mcp.tool()
 def spawn_actor(
     name: str,
-    type: str = "StaticMeshActor",
+    actor_type: str = "StaticMeshActor",
     location: Optional[List[float]] = None,
     rotation: Optional[List[float]] = None,
     scale: Optional[List[float]] = None,
@@ -502,7 +511,7 @@ def spawn_actor(
     try:
         params = {
             "name": name,
-            "type": type,
+            "type": actor_type,
             "location": location or [0.0, 0.0, 0.0],
             "rotation": rotation or [0.0, 0.0, 0.0],
             "scale": scale or [1.0, 1.0, 1.0],
@@ -1321,9 +1330,7 @@ def create_maze(
         if not (MIN_MAZE_WALL_HEIGHT <= wall_height <= MAX_MAZE_WALL_HEIGHT):
             return {"success": False, "message": f"wall_height must be between {MIN_MAZE_WALL_HEIGHT} and {MAX_MAZE_WALL_HEIGHT}"}
 
-        import random
-        if random_seed is not None:
-            random.seed(random_seed)
+        set_random_seed(random_seed)
         location = location or [0.0, 0.0, 0.0]
         spawned = []
         
@@ -1581,11 +1588,7 @@ def create_town(
 ) -> Dict[str, Any]:
     """Create a full dynamic town with buildings, streets, infrastructure, and vehicles."""
     try:
-        import random
-        if random_seed is not None:
-            random.seed(random_seed)
-        else:
-            random.seed()  # Use different seed each time for variety
+        set_random_seed(random_seed)
         
         unreal = get_unreal_connection()
         if not unreal:

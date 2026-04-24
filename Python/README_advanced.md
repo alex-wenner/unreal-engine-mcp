@@ -9,7 +9,7 @@ This server contains tools for advanced level building and composition plus lowe
 ### Essential Actor Management
 - `get_actors_in_level()` - List all actors
 - `find_actors_by_name(pattern)` - Find actors by pattern
-- `spawn_actor(name, type, location, rotation)` - Create basic actors
+- `spawn_actor(name, actor_type, location, rotation)` - Create basic actors
 - `delete_actor(name)` - Remove actors
 - `set_actor_transform(name, location, rotation, scale)` - Modify transforms
 

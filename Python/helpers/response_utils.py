@@ -4,10 +4,10 @@ Utilities for normalizing responses returned by the Unreal C++ bridge.
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 
-def normalize_unreal_response(response: Dict[str, Any] | None) -> Dict[str, Any]:
+def normalize_unreal_response(response: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """
     Normalize Unreal bridge responses while preserving backwards-compatible fields.
 
